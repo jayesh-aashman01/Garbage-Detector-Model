@@ -1,0 +1,100 @@
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# ==============================
+# IDE and editor
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================
+# Dataset
+# ==============================
+dataset/
+datasets/
+
+# Private manifests containing signed URLs
+data/manifest.jsonl
+*.ndjson
+
+# Download and dataset cache
+*.cache
+download_report.json
+
+# ==============================
+# YOLO / Ultralytics
+# ==============================
+runs/
+wandb/
+mlruns/
+
+# Model weights and exports
+*.pt
+*.pth
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.mlpackage
+
+# ==============================
+# Logs and results
+# ==============================
+*.log
+logs/
+results/
+test_visualization/
+
+# ==============================
+# Environment and secrets
+# ==============================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ==============================
+# OS files
+# ==============================
+.DS_Store
+Thumbs.db
+.Trash-*
+
+# ==============================
+# Jupyter
+# ==============================
+.ipynb_checkpoints/
+
+# ==============================
+# YOLO Dataset
+# ==============================
+
+# Ignore actual image and annotation data
+dataset/images/
+dataset/labels/
+
+# Ignore downloaded datasets
+datasets/
+
+# Keep dataset configuration
+!dataset/data.yaml
+
+# Ignore dataset caches
+*.cache
