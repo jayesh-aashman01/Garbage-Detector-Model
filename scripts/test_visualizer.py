@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import yaml
 from ultralytics import YOLO
 
+from gpu_utils import resolve_device
+
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -45,7 +47,7 @@ def main():
     parser.add_argument("--samples", type=int, default=10)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--conf", type=float, default=0.25)
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default="auto", help="auto, cpu, or CUDA device such as 0")
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
@@ -81,6 +83,7 @@ def main():
     print(f"Test images available: {len(images)}")
     print(f"Selected images: {len(selected)}")
 
+    device = resolve_device(args.device)
     model = YOLO(str(model_path))
 
     output_dir = Path("runs/test_visualization")
@@ -90,7 +93,8 @@ def main():
         source=[str(p) for p in selected],
         imgsz=args.imgsz,
         conf=args.conf,
-        device=args.device,
+        device=device,
+        half=device != "cpu",
         save=False,
         verbose=False
     )

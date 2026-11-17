@@ -14,15 +14,25 @@ MANIFEST="${MANIFEST:-data/manifest.jsonl}"
 DATA_YAML="${DATA_YAML:-dataset/data.yaml}"
 MODEL="${MODEL:-yolo11n.pt}"
 BEST_MODEL="${BEST_MODEL:-runs/detect/runs/detect/garbage-yolo11n/weights/best.pt}"
-DEVICE="${DEVICE:-cpu}"
+DEVICE="${DEVICE:-auto}"  # auto -> CUDA GPU 0 if available, else CPU
 EPOCHS="${EPOCHS:-100}"
 IMGSZ="${IMGSZ:-640}"
-BATCH="${BATCH:-2}"
-WORKERS="${WORKERS:-2}"
+BATCH="${BATCH:-auto}"    # auto -> fit batch to VRAM cap
+MAX_VRAM_GB="${MAX_VRAM_GB:-5.5}"  # 6 GB card minus headroom
+WORKERS="${WORKERS:-4}"
 SAMPLES="${SAMPLES:-10}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+
+# Resolve DEVICE=auto to a concrete value for the yolo CLI.
+resolved_device() {
+    if [[ "$DEVICE" == "auto" ]]; then
+        "$PYTHON" -c "import torch; print('0' if torch.cuda.is_available() else 'cpu')"
+    else
+        echo "$DEVICE"
+    fi
+}
 
 activate_venv() {
     if [[ -f "$VENV_DIR/bin/activate" ]]; then
@@ -62,7 +72,7 @@ evaluate() {
     log "Evaluating model on validation split"
     [[ -f "$DATA_YAML" ]] || die "Dataset config not found: $DATA_YAML. Run: ./run.sh download"
     [[ -f "$BEST_MODEL" ]] || die "Trained model not found: $BEST_MODEL. Run: ./run.sh train"
-    yolo detect val model="$BEST_MODEL" data="$DATA_YAML" split=val imgsz="$IMGSZ" device="$DEVICE"
+    yolo detect val model="$BEST_MODEL" data="$DATA_YAML" split=val imgsz="$IMGSZ" device="$(resolved_device)"
 }
 
 train() {
@@ -75,18 +85,19 @@ train() {
         --imgsz "$IMGSZ" \
         --batch "$BATCH" \
         --workers "$WORKERS" \
-        --device "$DEVICE"
+        --device "$DEVICE" \
+        --max-vram-gb "$MAX_VRAM_GB"
 }
 
 test_model() {
     log "Testing on random images from the test split"
     [[ -f "$BEST_MODEL" ]] || die "Trained model not found: $BEST_MODEL. Run: ./run.sh train"
-    "$PYTHON" scripts/test_visualize.py \
+    "$PYTHON" scripts/test_visualizer.py \
         --model "$BEST_MODEL" \
         --data "$DATA_YAML" \
         --samples "$SAMPLES" \
         --imgsz "$IMGSZ" \
-        --device "$DEVICE"
+        --device "$(resolved_device)"
 }
 
 usage() {
@@ -102,13 +113,14 @@ Commands:
   all        Run dependencies, download, train, evaluate, then test
 
 Environment overrides:
-  DEVICE=cpu|0  EPOCHS=100  IMGSZ=640  BATCH=2  WORKERS=2
+  DEVICE=auto|cpu|0  EPOCHS=100  IMGSZ=640  BATCH=auto|16  WORKERS=4
+  MAX_VRAM_GB=5.5  (VRAM cap for training; per-epoch usage logged to <run>/vram.csv)
   MANIFEST=data/manifest.jsonl  BEST_MODEL=/path/to/best.pt
 
 Examples:
   ./run.sh all
   ./run.sh deps
-  DEVICE=cpu EPOCHS=100 ./run.sh train
+  DEVICE=0 BATCH=16 ./run.sh train
 USAGE
 }
 

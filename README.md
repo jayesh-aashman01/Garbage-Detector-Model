@@ -60,20 +60,23 @@ Do not train until the audit passes and you have reviewed `dataset/download_repo
 
 ## 4. Train YOLO11
 
-Start with the nano model because laptop CPU training can be slow:
+Training uses CUDA automatically when an NVIDIA GPU is available (falls back to CPU otherwise):
 
 ```bash
-python scripts/train.py \
-  --data dataset/data.yaml \
-  --model yolo11n.pt \
-  --epochs 100 \
-  --imgsz 640 \
-  --batch 4 \
-  --workers 2 \
-  --device auto
+python scripts/train.py --data dataset/data.yaml --model yolo11n.pt --epochs 100 --imgsz 640
+# or
+./run.sh train
 ```
 
-`auto` lets Ultralytics select an available accelerator. On a CPU-only laptop, use `--device cpu`; for a CUDA GPU, use `--device 0`.
+GPU settings (tuned for a 6 GB card):
+- `--device auto` picks CUDA GPU `0` if available; force with `--device 0` or `--device cpu`.
+- `--max-vram-gb 5.5` caps this process's VRAM, leaving headroom for the display / CUDA context.
+- `--batch auto` lets Ultralytics AutoBatch pick the largest batch that uses ~70% of that cap. Pass an int (e.g. `--batch 16`) to fix it.
+- Mixed precision (AMP), cuDNN benchmark and TF32 are enabled on GPU.
+- `--cache ram` caches decoded images in RAM for faster data loading if you have spare memory.
+- VRAM usage is printed every epoch and logged to `runs/detect/<name>/vram.csv`; a warning appears if peak usage passes 90% of the cap. On out-of-memory, lower `--batch` or `--imgsz`.
+
+Verify CUDA first with `nvidia-smi` and `python -c "import torch; print(torch.cuda.is_available())"`. If it prints `False`, install a CUDA build of PyTorch from the PyTorch install selector.
 
 Training outputs are saved under `runs/detect/garbage-yolo11n/`. The best checkpoint is normally `runs/detect/garbage-yolo11n/weights/best.pt`.
 
