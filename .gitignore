@@ -29,7 +29,7 @@ dataset/
 datasets/
 
 # Private manifests containing signed URLs
-data/manifest.jsonl
+!data/manifest.jsonl
 *.ndjson
 
 # Download and dataset cache
