@@ -2,6 +2,25 @@
 
 All notable changes to this project. Newest first.
 
+## [0.2.1] - 2026-11-19 - Roboflow class names + clearer auth errors
+
+### Changed
+- `scripts/merge_datasets.py`: `plastic`, `metal`, `paper`, `glass` are now recognised as garbage. This means the Roboflow
+  dataset (People, Waste, Plastic, Metal, Paper, Glass) merges with `./run.sh merge` and no `--class-map` options.
+- `scripts/download_roboflow.py`: on a 401/403 response the error now shows:
+  - Roboflow's own error text, with the key masked
+  - where the key came from (shell environment variable or `.env` path)
+  - the key's length and last 3 characters
+  - how to fix it
+  New module variable: `KEY_SOURCE`.
+
+### Added
+- 4 tests: real Roboflow class names; 401 message (reason shown, key masked, source named); env-var source; empty 401 body.
+
+### Files touched
+`scripts/merge_datasets.py`, `scripts/download_roboflow.py`, `tests/test_merge_datasets.py`,
+`tests/test_download_roboflow.py`, `CHANGELOG.md`, `PROJECT_STATE.md`.
+
 ## [0.2.0] - 2026-11-19 - Garbage + person CCTV detector
 
 ### Added

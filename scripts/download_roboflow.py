@@ -28,6 +28,7 @@ API = "https://api.roboflow.com"
 DEFAULT_WORKSPACE = "noyals-workspace"
 DEFAULT_PROJECT = "human-and-trash-detection-tciuj-3hmlf"
 PLACEHOLDER = "paste-your-roboflow-api-key-here"
+KEY_SOURCE = "unknown"  # ADDED: where the key came from, shown in auth errors
 
 
 def load_env_file(path: Path) -> dict:
@@ -47,8 +48,14 @@ def load_env_file(path: Path) -> dict:
 
 def get_api_key(env_path: Path) -> str:
     """Return the API key from the environment first, then .env. Raises SystemExit if missing."""
-    key = os.environ.get("ROBOFLOW_API_KEY") or load_env_file(env_path).get("ROBOFLOW_API_KEY", "")
-    dbg("get_api_key", f"key found={bool(key)} placeholder={key == PLACEHOLDER} length={len(key)}")
+    global KEY_SOURCE
+    env_key = os.environ.get("ROBOFLOW_API_KEY")
+    if env_key:  # CHANGED: remember the source so a 401 can say which key was used
+        key, KEY_SOURCE = env_key, "shell environment variable ROBOFLOW_API_KEY"
+    else:
+        key, KEY_SOURCE = load_env_file(env_path).get("ROBOFLOW_API_KEY", ""), f"file {env_path.resolve()}"
+    dbg("get_api_key", f"key found={bool(key)} source={KEY_SOURCE} placeholder={key == PLACEHOLDER} "
+                       f"length={len(key)}")
     if not key or key == PLACEHOLDER:
         raise SystemExit(
             f"ROBOFLOW_API_KEY is not set. Paste it into {env_path} (see .env.example) "
@@ -71,7 +78,14 @@ def api_get(url: str, key: str, timeout: int = 60) -> dict:
         raise SystemExit(f"Network error talking to Roboflow: {mask(exc, key)}") from None
     dbg("api_get", f"status={resp.status_code}")
     if resp.status_code in (401, 403):
-        raise SystemExit("Roboflow rejected the API key (HTTP %d). Check ROBOFLOW_API_KEY." % resp.status_code)
+        # CHANGED: show Roboflow's own reason (key masked) and where the key came from
+        raise SystemExit(
+            f"Roboflow rejected the API key (HTTP {resp.status_code}).\n"
+            f"  Roboflow says: {mask(resp.text[:300], key).strip() or '(empty response)'}\n"
+            f"  Key used: from {KEY_SOURCE}, length {len(key)}, ends with ...{key[-3:] if len(key) > 8 else '?'}\n"
+            "  Fix: use the Private API key (not the publishable rf_... key). If the key came from the\n"
+            "  shell, run `unset ROBOFLOW_API_KEY` so the .env file is used."
+        )
     if resp.status_code == 404:
         raise SystemExit(f"Not found on Roboflow: {mask(url, key)}. Check workspace/project/version.")
     if resp.status_code >= 400:

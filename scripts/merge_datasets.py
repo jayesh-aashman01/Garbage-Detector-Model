@@ -36,7 +36,8 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SPLIT_ALIASES = {"train": ["train"], "val": ["val", "valid", "validation"], "test": ["test"]}
 SPLIT_PRIORITY = {"test": 3, "val": 2, "train": 1}  # who keeps an image when two splits clash
 KEYWORDS = {
-    0: ("garbage", "trash", "waste", "litter", "rubbish", "dump", "debris", "junk", "refuse"),
+    0: ("garbage", "trash", "waste", "litter", "rubbish", "dump", "debris", "junk", "refuse",
+        "plastic", "metal", "paper", "glass"),  # ADDED: Roboflow human+trash material classes
     1: ("person", "human", "people", "pedestrian", "man", "woman", "worker"),
 }
 

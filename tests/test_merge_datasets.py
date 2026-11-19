@@ -53,6 +53,12 @@ class ClassMapTests(unittest.TestCase):
         step(f"mapping -> {m}")
         self.assertEqual(m, {0: 1, 1: 0, 2: 0, 3: 1})
 
+    def test_roboflow_human_trash_names(self):
+        step("real Roboflow names [Glass, Metal, Paper, People, Plastic, Waste] map without --class-map")
+        m = md.build_class_map(["Glass", "Metal", "Paper", "People", "Plastic", "Waste"], {})
+        step(f"mapping -> {m}")
+        self.assertEqual(m, {0: 0, 1: 0, 2: 0, 3: 1, 4: 0, 5: 0})
+
     def test_unknown_name_stops(self):
         step("'bicycle' is unknown -> SystemExit that suggests --class-map")
         with self.assertRaises(SystemExit) as cm:

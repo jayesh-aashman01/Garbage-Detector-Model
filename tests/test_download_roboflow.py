@@ -74,6 +74,37 @@ class ApiTests(unittest.TestCase):
                 dr.api_get("https://api.roboflow.com/w/p", KEY)
         self.assertIn("API key", str(cm.exception))
 
+    def test_401_shows_reason_source_and_masks_key(self):
+        step("401 whose body echoes the key -> reason shown, key masked, source named")
+        body = f'{{"error": "This API key does not exist (or has been revoked). key={KEY}"}}'
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=True):
+            env = Path(d) / ".env"
+            env.write_text(f"ROBOFLOW_API_KEY={KEY}\n")
+            dr.get_api_key(env)
+            with mock.patch.object(dr.requests, "get", return_value=self._resp(401, text=body)):
+                with self.assertRaises(SystemExit) as cm:
+                    dr.api_get("https://api.roboflow.com/w/p", KEY)
+        msg = str(cm.exception)
+        step(f"error ->\n{msg}")
+        self.assertIn("does not exist", msg)
+        self.assertNotIn(KEY, msg)
+        self.assertIn("file", msg)
+        self.assertIn("length 12", msg)
+
+    def test_key_source_env_variable(self):
+        step("key from shell env -> KEY_SOURCE names the environment variable")
+        with mock.patch.dict(os.environ, {"ROBOFLOW_API_KEY": KEY}):
+            dr.get_api_key(Path("/nonexistent/.env"))
+        step(f"KEY_SOURCE -> {dr.KEY_SOURCE}")
+        self.assertIn("environment variable", dr.KEY_SOURCE)
+
+    def test_401_with_empty_body(self):
+        step("401 with empty body -> '(empty response)'")
+        with mock.patch.object(dr.requests, "get", return_value=self._resp(401, text="")):
+            with self.assertRaises(SystemExit) as cm:
+                dr.api_get("https://api.roboflow.com/w/p", KEY)
+        self.assertIn("(empty response)", str(cm.exception))
+
     def test_resolve_latest_version(self):
         step("versions w/p/1, w/p/3, w/p/2 -> latest is 3")
         payload = {"versions": [{"id": "w/p/1"}, {"id": "w/p/3"}, {"id": "w/p/2"}]}
