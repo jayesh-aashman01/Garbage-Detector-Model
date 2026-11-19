@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-19 · Version 0.2.0 · Last pushed state: branch `feat/garbage-person-cctv` pushed 2026-11-19 (not merged to `main`; confirm with the user)_
+_Last updated: 2026-11-19 · Version 0.2.0 · Last pushed state: `main` at 72089bc (fast-forward merge of `feat/garbage-person-cctv`), pushed 2026-11-19_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
