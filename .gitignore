@@ -98,3 +98,10 @@ datasets/
 
 # Ignore dataset caches
 *.cache
+
+# ==============================
+# Merged / third-party datasets (added for garbage+person pipeline)
+# ==============================
+datasets_raw/
+dataset_merged/
+cctv_test/

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # YOLO11 Garbage Detection pipeline
-# Usage: ./run.sh [all|deps|download|evaluate|train|test]
+# Usage: ./run.sh [all|deps|download|roboflow|merge|evaluate|train|test|predict]
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
@@ -11,9 +11,13 @@ PYTHON="${PYTHON:-python3}"
 VENV_DIR="${VENV_DIR:-.venv}"
 REQUIREMENTS="${REQUIREMENTS:-requirements.txt}"
 MANIFEST="${MANIFEST:-data/manifest.jsonl}"
-DATA_YAML="${DATA_YAML:-dataset/data.yaml}"
-MODEL="${MODEL:-yolo11n.pt}"
-BEST_MODEL="${BEST_MODEL:-runs/detect/runs/detect/garbage-yolo11n/weights/best.pt}"
+DATA_YAML="${DATA_YAML:-dataset_merged/data.yaml}"  # CHANGED: merged garbage+person dataset
+MODEL="${MODEL:-yolo11m.pt}"                       # CHANGED: was yolo11n.pt
+RUN_NAME="${RUN_NAME:-garbage-person-yolo11m}"     # ADDED
+BEST_MODEL="${BEST_MODEL:-runs/detect/runs/detect/$RUN_NAME/weights/best.pt}"  # CHANGED
+CCTV_AUG="${CCTV_AUG:-medium}"                     # ADDED: off|light|medium|heavy
+RF_VERSION="${RF_VERSION:-latest}"                 # ADDED: Roboflow dataset version
+PERSON_MODEL="${PERSON_MODEL:-yolo11x.pt}"         # ADDED: COCO model that auto-labels people
 DEVICE="${DEVICE:-auto}"  # auto -> CUDA GPU 0 if available, else CPU
 EPOCHS="${EPOCHS:-100}"
 IMGSZ="${IMGSZ:-640}"
@@ -68,6 +72,28 @@ download() {
     "$PYTHON" scripts/audit_dataset.py --root dataset
 }
 
+# ADDED: download the Roboflow human+trash dataset (API key comes from .env)
+roboflow() {
+    log "Downloading Roboflow human+trash dataset"
+    "$PYTHON" scripts/download_roboflow.py --version "$RF_VERSION"
+}
+
+# ADDED: merge old garbage dataset + Roboflow dataset into dataset_merged/ (garbage, person)
+merge() {
+    log "Merging datasets (auto-labelling people in the old images)"
+    [[ -d dataset/images ]] || die "Old dataset not found in ./dataset. Copy it here or run: ./run.sh download"
+    "$PYTHON" scripts/merge_datasets.py --old dataset --roboflow datasets_raw/roboflow \
+        --output dataset_merged --person-model "$PERSON_MODEL" --device "$(resolved_device)" --overwrite
+}
+
+# ADDED: run the trained model on images / videos / folders / rtsp:// streams
+predict() {
+    log "Predicting on: ${*:-<nothing>}"
+    [[ $# -gt 0 ]] || die "Usage: ./run.sh predict <image|video|folder|rtsp://...> [more ...]"
+    [[ -f "$BEST_MODEL" ]] || die "Trained model not found: $BEST_MODEL. Run: ./run.sh train"
+    "$PYTHON" scripts/predict_media.py "$@" --model "$BEST_MODEL" --imgsz "$IMGSZ" --device "$(resolved_device)"
+}
+
 evaluate() {
     log "Evaluating model on validation split"
     [[ -f "$DATA_YAML" ]] || die "Dataset config not found: $DATA_YAML. Run: ./run.sh download"
@@ -86,7 +112,9 @@ train() {
         --batch "$BATCH" \
         --workers "$WORKERS" \
         --device "$DEVICE" \
-        --max-vram-gb "$MAX_VRAM_GB"
+        --max-vram-gb "$MAX_VRAM_GB" \
+        --name "$RUN_NAME" \
+        --cctv-aug "$CCTV_AUG"
 }
 
 test_model() {
@@ -102,20 +130,25 @@ test_model() {
 
 usage() {
     cat <<USAGE
-Usage: ./run.sh [all|deps|download|evaluate|train|test]
+Usage: ./run.sh [all|deps|download|roboflow|merge|evaluate|train|test|predict]
 
 Commands:
   deps       Create .venv and install requirements
-  download   Download/prepare dataset and audit it
+  download   Download/prepare the old dataset and audit it
+  roboflow   Download the Roboflow human+trash dataset (needs ROBOFLOW_API_KEY in .env)
+  merge      Build dataset_merged/ (garbage + person) and audit it
+  predict    Run best.pt on images/videos/folders/streams: ./run.sh predict clip.mp4 frames/
   evaluate   Evaluate best.pt on validation split
-  train      Train YOLO11n
+  train      Train YOLO11m (CCTV augmentation on)
   test       Visualize predictions on random test images
-  all        Run dependencies, download, train, evaluate, then test
+  all        deps, roboflow, merge, train, evaluate, then test (needs ./dataset present)
 
 Environment overrides:
   DEVICE=auto|cpu|0  EPOCHS=100  IMGSZ=640  BATCH=auto|16  WORKERS=4
   MAX_VRAM_GB=5.5  (VRAM cap for training; per-epoch usage logged to <run>/vram.csv)
   MANIFEST=data/manifest.jsonl  BEST_MODEL=/path/to/best.pt
+  MODEL=yolo11m.pt  RUN_NAME=garbage-person-yolo11m  CCTV_AUG=off|light|medium|heavy
+  RF_VERSION=latest|N  PERSON_MODEL=yolo11x.pt
 
 Examples:
   ./run.sh all
@@ -133,6 +166,20 @@ case "$COMMAND" in
         activate_venv
         download
         ;;
+    roboflow)
+        activate_venv
+        roboflow
+        ;;
+    merge)
+        activate_venv
+        merge
+        "$PYTHON" scripts/audit_dataset.py --root dataset_merged
+        ;;
+    predict)
+        activate_venv
+        shift
+        predict "$@"
+        ;;
     evaluate)
         activate_venv
         evaluate
@@ -147,7 +194,8 @@ case "$COMMAND" in
         ;;
     all)
         deps
-        download
+        roboflow
+        merge
         train
         evaluate
         test_model

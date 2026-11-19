@@ -2,6 +2,41 @@
 
 This project turns the supplied JSONL manifest into a standard Ultralytics YOLO dataset, audits it, and trains a YOLO11 detector.
 
+## v2: garbage + person detector for CCTV (current workflow)
+
+Two classes: `0 garbage`, `1 person`. Model: **YOLO11m** (most accurate size that trains on a 6 GB GPU
+and still compiles for the Raspberry Pi AI HAT / Hailo). Training adds CCTV-style degradations
+(blur, noise, JPEG, low resolution, grayscale night IR, burned-in timestamps).
+
+On the GPU training machine:
+
+```bash
+git clone https://github.com/jayesh-aashman01/Garbage-Detector-Model.git && cd Garbage-Detector-Model
+./run.sh deps                                   # venv + requirements (incl. albumentations)
+cp .env.example .env && nano .env               # paste ROBOFLOW_API_KEY (file is git-ignored)
+# copy the old dataset folder here as ./dataset  (its download links expired 2026-11-20)
+#   e.g. rsync -a OLD_MACHINE:path/Garbage_Detection/dataset ./
+./run.sh roboflow                               # -> datasets_raw/roboflow/
+./run.sh merge                                  # -> dataset_merged/ + merge_report.json, audited
+python scripts/cctv_augment.py --preview dataset_merged/images/val   # eyeball the augmentations
+./run.sh train                                  # yolo11m, 100 epochs, CCTV_AUG=medium
+./run.sh evaluate                               # mAP on val
+./run.sh predict cctv_test/ some_image.jpg rtsp://user:pass@cam/stream   # images/videos/streams
+```
+
+Check `dataset_merged/merge_report.json` before training: class mapping, dropped duplicates,
+auto-labelled person boxes, and per-split counts. If Roboflow uses a class name the script
+does not recognise, it stops and tells you to add e.g. `--class-map "Plastic=garbage"`.
+
+Useful overrides: `EPOCHS=150 CCTV_AUG=heavy BATCH=8 ./run.sh train`, `GD_DEBUG=1` for `[DEBUG]` logs.
+`predict_media.py` raises a video alert only when garbage is seen in `--persist 3` of the last
+`--window 5` sampled frames (`--sample-fps 2`), which suppresses one-frame false alarms.
+Real-world test clips: `tests/cctv_test_clips.txt`. Tests: `.venv/bin/python -m unittest discover -s tests -t tests -v`.
+
+Later, for the Pi (Hailo-8/8L AI HAT, compile on Linux x86_64 with Hailo DFC installed):
+`yolo export model=.../best.pt format=hailo name=hailo8l data=dataset_merged/data.yaml`
+(see https://docs.ultralytics.com/integrations/hailo). Not automated yet.
+
 ## Important findings in the supplied manifest
 
 - The file contains one dataset metadata record and 517 image records.

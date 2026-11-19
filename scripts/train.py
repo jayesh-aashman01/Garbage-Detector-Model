@@ -7,6 +7,8 @@ from pathlib import Path
 import torch
 from ultralytics import YOLO
 
+from cctv_augment import LEVELS, build_cctv_augmentations  # ADDED: CCTV-style degradations
+from debug_log import dbg, enable  # ADDED: switchable [DEBUG] logs
 from gpu_utils import add_vram_tracker, configure_cuda, cuda_index, resolve_device
 
 
@@ -23,8 +25,8 @@ def parse_batch(value: str, on_gpu: bool, cap_gb: float, total_gb: float):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data", default="dataset/data.yaml")
-    p.add_argument("--model", default="yolo11n.pt")
+    p.add_argument("--data", default="dataset_merged/data.yaml")  # CHANGED: 2-class merged dataset
+    p.add_argument("--model", default="yolo11m.pt")  # CHANGED: best accuracy that fits 6 GB + Hailo
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--batch", default="auto",
@@ -35,10 +37,16 @@ def main():
                    help="VRAM cap for this process (6 GB card minus headroom for display/CUDA context)")
     p.add_argument("--cache", default="false", choices=["false", "ram", "disk"],
                    help="Cache decoded images to speed up data loading")
-    p.add_argument("--name", default="garbage-yolo11n")
+    p.add_argument("--name", default="garbage-person-yolo11m")  # CHANGED
+    # ADDED: CCTV-style augmentation strength (blur, noise, JPEG, grayscale IR, timestamp text)
+    p.add_argument("--cctv-aug", default="medium", choices=LEVELS)
+    p.add_argument("--patience", type=int, default=50)  # ADDED (was hard-coded 25)
+    p.add_argument("--debug", action="store_true")  # ADDED
     p.add_argument("--resume", action="store_true")
     p.add_argument("--validate-only", action="store_true")
     args = p.parse_args()
+    enable(args.debug)
+    dbg("main", f"enter args={vars(args)}")
 
     data = Path(args.data).resolve()
     if not data.is_file():
@@ -59,7 +67,11 @@ def main():
         return
 
     batch = parse_batch(args.batch, on_gpu, cap_gb, total_gb)
-    print(f"Device: {device} | batch: {batch} | workers: {args.workers} | cache: {args.cache}")
+    augmentations = build_cctv_augmentations(args.cctv_aug)  # ADDED
+    print(f"Device: {device} | batch: {batch} | workers: {args.workers} | cache: {args.cache} "
+          f"| cctv-aug: {args.cctv_aug}")
+    dbg("main", f"model={args.model} imgsz={args.imgsz} augmentations="
+                f"{[type(t).__name__ for t in augmentations] if augmentations else None}")
     if on_gpu:
         add_vram_tracker(model, idx, cap_gb)
 
@@ -73,14 +85,17 @@ def main():
             device=device,
             project="runs/detect",
             name=args.name,
-            patience=25,
+            patience=args.patience,  # CHANGED: was 25
             save=True,
             plots=True,
             cache=False if args.cache == "false" else args.cache,
             amp=on_gpu,  # mixed precision: ~half the activation memory and faster on CUDA
             exist_ok=True,
             resume=args.resume,
+            # ADDED: pixel-only CCTV degradations; omitted when off so Ultralytics keeps its defaults
+            **({"augmentations": augmentations} if augmentations else {}),
         )
+        dbg("main", f"exit training finished, results in runs/detect/{args.name}")
     except torch.cuda.OutOfMemoryError:
         raise SystemExit(
             f"CUDA out of memory with batch={batch}. Retry with a smaller --batch "

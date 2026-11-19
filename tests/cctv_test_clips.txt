@@ -1,0 +1,20 @@
+# Public CCTV illegal-dumping clips used as a real-world sanity test (NOT training data).
+# Third-party footage: download locally for testing only, do not commit or redistribute.
+#
+# Download (yt-dlp is a separate tool, not a project dependency):
+#   pipx install yt-dlp   # or: python -m pip install --user yt-dlp
+#   mkdir -p cctv_test && cd cctv_test
+#   for id in $(grep -v '^#' ../tests/cctv_test_clips.txt | awk '{print $1}'); do
+#     yt-dlp -f "bv*[height<=480][ext=mp4]/b[height<=480]" -o "%(id)s.%(ext)s" "https://youtu.be/$id"; done
+#   cd .. && ./run.sh predict cctv_test/
+#
+# Baseline (old 1-class yolo11n, 10 CPU epochs, conf 0.25, persist 3/5 @ 2 fps) - 2026-11-19:
+# id          | scene                                    | baseline alert            | expected
+Wfvvpd4lrAU   | day, truck dumps huge bag pile           | alert during dump (OK)    | alert
+CnlyKpDNus0   | day, woodland, man dumps boards          | none (MISS)               | alert
+9dKXOlDuasE   | night IR, person drops bags by cars      | none (MISS)               | alert
+38zwbasvoG0   | night/dawn IR, truck dumps in yard       | ~50s of alerts on vehicles (mostly FALSE) | alert only on the pile
+S9BXzFwmu7k   | night IR, wide rural road, truck dumping | 1.6s                      | alert
+bZjdzhahNIo   | day, pickup unloads debris under bridge  | alert on face close-up (FALSE) | alert on debris
+esUQRISUgYM   | day, council compilation, bags on pavement | 2s, on a person (FALSE) | alert on bags
+0On5dMz1rpc   | night, truck dumps 12ft pile (dark)      | none (MISS)               | alert
