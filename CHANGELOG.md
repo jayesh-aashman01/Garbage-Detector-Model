@@ -16,6 +16,36 @@ All notable changes to this project. Newest first.
   under `dropped`, and the settings under `rf_downsampling`.
 - `tests/test_rf_filter.py`: 9 tests (defaults, close-up, boundary, portrait, seeded cap, cap > count, no rf records,
   invalid values, CLI exit).
+- `scripts/clips_to_frames.py` (Part B smoke test): CCTV clip → frames at `--fps` → dHash dedupe inside the clip →
+  draft labels (person: yolo11x, garbage: YOLO-World `yolov8m-worldv2` with text prompts) → `datasets_raw/cctv/`
+  (`images|labels/<split>/`, `data.yaml`, `review.json` with `reviewed=false`). A whole clip goes to one split (`--assign`).
+  Re-running never resets `reviewed=true`.
+- `tests/test_clips_to_frames.py`: 12 tests (assign parsing, fps sampling, dedupe incl. unreadable/empty, draft label
+  order, background frames, split writing, review persistence, CLI failures). Models are faked.
+- `scripts/clips_to_frames.py`: `--garbage-backend gdino` drafts garbage with Grounding DINO
+  (`IDEA-Research/grounding-dino-tiny` by default, via `transformers`), with phrase prompts `GDINO_PROMPTS`,
+  `--gdino-text-threshold` and class-agnostic NMS (`--nms-iou`). The default is still `yolo-world`. `review.json` records `garbage_backend`.
+  New: `GroundingDinoDetector`, `gdino_prompt`, `_Boxes`. +4 tests (79 total).
+- `scripts/clips_to_frames.py` (scale-up for about 1500 frames, approved 2026-11-20):
+  - `--device auto` (default, via `gpu_utils.resolve_device`): CUDA when available, for both yolo11x and Grounding DINO.
+  - Garbage confidence default is 0.40 for gdino (0.15 for yolo-world).
+  - `filter_garbage_boxes`: drops garbage drafts larger than `--max-garbage-area 0.8` of the image, and drafts more than `--nested-frac 0.8` inside a larger garbage draft.
+  - Folders of clips are accepted (`expand_videos`).
+  - Stable automatic clip→split (`auto_split`, `--val-pct 15`, `--test-pct 0`).
+  - `--max-frames` budget.
+  - Writes `classes.txt` for X-AnyLabeling.
+  - `--mark-reviewed CLIP|all`.
+  - `review.json` also records `garbage_filtered` and `device`.
+- `scripts/merge_datasets.py`: `--cctv DIR` with new `collect_cctv`. Only clips with `reviewed=true` are merged, and each clip is one leakage group (`cctv:<clip>`). `merge_report.json` → `sources.cctv`.
+- `run.sh`:
+  - new `cctv-frames` command (Grounding DINO, `CCTV_DIR`, `CCTV_MAX_FRAMES=1500`, preview).
+  - `merge` adds `--cctv $CCTV_DIR` when `review.json` exists and passes extra args through.
+- `README.md`: old-label repair steps and the CCTV draft → X-AnyLabeling review → merge workflow.
+- `tests/test_merge_cctv.py` (4 tests). `tests/test_clips_to_frames.py`: +9 tests (92 total).
+- Local only: the YOLO-World smoke output was moved to `datasets_raw/cctv_smoke_yoloworld` and `dataset_preview/cctv_smoke_yoloworld` (not deleted).
+- New dependency (approved 2026-11-20): `transformers` 5.23.0, installed in the venv and not pinned in `requirements.txt` (user said not needed).
+- New dependency, auto-installed by Ultralytics on first YOLO-World use (approved 2026-11-20):
+  `clip` from `git+https://github.com/ultralytics/CLIP.git` (+ `ftfy`, `regex`, `wcwidth`). Not in `requirements.txt` yet.
 - `.gitignore`: `dataset_preview/`.
 
 ### Fixed
@@ -24,7 +54,9 @@ All notable changes to this project. Newest first.
 
 ### Files touched
 `scripts/merge_datasets.py`, `scripts/preview_dataset.py` (new), `scripts/restore_old_labels.py` (new),
-`tests/test_rf_filter.py` (new), `.gitignore`, `CHANGELOG.md`, `PROJECT_STATE.md`.
+`tests/test_rf_filter.py` (new), `scripts/clips_to_frames.py` (new), `tests/test_clips_to_frames.py` (new), `tests/test_merge_cctv.py` (new),
+`run.sh`, `README.md`,
+`.gitignore`, `CHANGELOG.md`, `PROJECT_STATE.md`.
 
 ## [0.2.1] - 2026-11-19 - Roboflow class names + clearer auth errors
 

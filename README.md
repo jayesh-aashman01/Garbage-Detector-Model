@@ -33,6 +33,47 @@ Useful overrides: `EPOCHS=150 CCTV_AUG=heavy BATCH=8 ./run.sh train`, `GD_DEBUG=
 `--window 5` sampled frames (`--sample-fps 2`), which suppresses one-frame false alarms.
 Real-world test clips: `tests/cctv_test_clips.txt`. Tests: `.venv/bin/python -m unittest discover -s tests -t tests -v`.
 
+### Before merging on the GPU machine: repair the old labels
+The training machine's `dataset/` had 0-byte label files, so every `old_*` image lost its garbage boxes.
+Rebuild them from the manifest. The script backs up the labels folder first:
+```bash
+python scripts/restore_old_labels.py              # dataset/labels + dataset_merged/labels old_* from data/manifest.jsonl
+python scripts/preview_dataset.py --data dataset_merged --out dataset_preview   # check boxes; empty ones go to */empty_labels/
+```
+
+### Adding CCTV frames (person + garbage) — draft, review, merge
+Frames from the same clip always stay in one split, so there is no leakage. The steps:
+```
+clips/  ──► ./run.sh cctv-frames clips/      1 fps, dedupe, Grounding DINO garbage + yolo11x person drafts
+        ──► review in X-AnyLabeling            fix every frame (drafts are NOT ground truth)
+        ──► clips_to_frames.py --mark-reviewed  only reviewed clips are merged
+        ──► ./run.sh merge                      adds datasets_raw/cctv automatically
+```
+1. **Draft (GPU machine).** Put the clips in one folder, then run:
+   ```bash
+   pip install transformers          # Grounding DINO (one-time); CLIP for YOLO-World installs itself
+   ./run.sh cctv-frames cctv_clips/  # CUDA if available; stops starting new clips at CCTV_MAX_FRAMES=1500
+   ```
+   This writes `datasets_raw/cctv/{images,labels}/{train,val}/`, `classes.txt`, `review.json` and the preview `dataset_preview/cctv/`.
+   About 15% of clips go to val automatically (stable per clip name). Use `--assign CLIP=test` to override.
+   Garbage drafts use confidence 0.40. A box covering more than 80% of the image is dropped, and so is a box more than 80% inside a larger garbage box (one box per pile).
+   Re-running skips clips that are already done. Add more clips and run again.
+2. **Review (any machine, X-AnyLabeling desktop app).** For each split folder:
+   - Open the folder `datasets_raw/cctv/images/train`.
+   - **Import:** `Import` → YOLO HBB, choose `datasets_raw/cctv/classes.txt`, then the folder `datasets_raw/cctv/labels/train`.
+   - Fix the boxes. Keys: `D` next image, `A` previous, `R` rectangle, `Delete` removes a box.
+     - Delete garbage boxes on vehicles, people and signs.
+     - Use one box per pile, and separate boxes only for separate items.
+     - Box every person.
+     - Delete frames that are not CCTV (ads, studio shots): remove both the image and its `.txt`.
+   - **Export:** `Export Annotations` → `Export YOLO Annotations` with the same `classes.txt`.
+     The export path defaults to a `labels` folder next to the images. **Point it to `datasets_raw/cctv/labels/train`.**
+   - Repeat for `val` (and `test`).
+   - Check the result: `python scripts/preview_dataset.py --data datasets_raw/cctv --out dataset_preview/cctv`.
+3. **Mark reviewed:** `python scripts/clips_to_frames.py --out datasets_raw/cctv --mark-reviewed CLIP1 CLIP2` (or `all`).
+4. **Merge:** `./run.sh merge`. Extra flags pass through, e.g. `./run.sh merge --rf-drop-closeup 0.5 --rf-drop-portrait 0.4 --rf-cap-train 2500`.
+   `merge_report.json` → `sources.cctv` lists the reviewed and skipped clips.
+
 Later, for the Pi (Hailo-8/8L AI HAT, compile on Linux x86_64 with Hailo DFC installed):
 `yolo export model=.../best.pt format=hailo name=hailo8l data=dataset_merged/data.yaml`
 (see https://docs.ultralytics.com/integrations/hailo). Not automated yet.

@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-20 · Version 0.3.0-dev (unpushed) · Previously: Last pushed state: `main`, v0.2.1 pushed 2026-11-19 (see git log)_
+_Last updated: 2026-11-20 · Version 0.3.0-dev · Last pushed state: `main` at fa2ce34 (Part A), plus the Part B commit pushed 2026-11-20 (see git log)_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
@@ -29,7 +29,9 @@ _Last updated: 2026-11-20 · Version 0.3.0-dev (unpushed) · Previously: Last pu
 | Restore old garbage labels from manifest (`restore_old_labels.py`) | done (run on local copy) | 2026-11-20 |
 | Opt-in Roboflow down-sampling in merge (close-up / portrait / train cap) | done (not yet used in a merge) | 2026-11-20 |
 | Live Pi camera demo on CPU (NCNN, `~/garbage_live/live.py` on the Pi, not in repo) | done (test only) | 2026-11-20 |
-| CCTV frames pipeline from clips (Part B) | planned (awaiting approval) | — |
+| CCTV frames pipeline from clips (Part B, `clips_to_frames.py`, `./run.sh cctv-frames`) | done: Grounding DINO drafts, CUDA auto, 1500-frame budget, box filters, review gate | 2026-11-20 |
+| Merge reviewed CCTV frames (`merge_datasets.py --cctv`, automatic in `./run.sh merge`) | done (no reviewed clips yet) | 2026-11-20 |
+| CCTV data collection, about 1500 frames, plus human review in X-AnyLabeling | planned (user, on GPU machine) | — |
 | Hailo export + Raspberry Pi inference service | planned | — |
 | Per-camera ROI masks, day/night thresholds, dumping-event logic (person + new static garbage) | planned (proposed, not approved) | — |
 
@@ -44,6 +46,9 @@ flowchart LR
   D --> MG[merge_datasets.py]
   RF --> MG
   BG[optional backgrounds/] --> MG
+  CL[CCTV clips] -->|clips_to_frames.py: 1 fps, dHash dedupe, Grounding DINO + yolo11x drafts| CR[datasets_raw/cctv/ + review.json]
+  CR -->|X-AnyLabeling review, --mark-reviewed| CR
+  CR -->|reviewed clips only, one leakage group per clip| MG
   Y[yolo11x.pt COCO] -->|auto-label people| MG
   MG --> DM[dataset_merged/ garbage+person + merge_report.json]
   DM -->|train.py + cctv_augment.py| W[runs/.../best.pt yolo11m]
@@ -53,6 +58,7 @@ flowchart LR
 - `run.sh` is the single entry point. `debug_log.py` is shared by all new scripts.
 - Ultralytics applies CCTV degradations after mosaic/affine, and they change pixels only, so boxes are untouched. They are stored inside the checkpoint args.
 - In video, an alert switches on only when garbage appears in `persist` of the last `window` sampled frames.
+- CCTV frames are drafts until a human reviews them. `review.json` is the gate: `collect_cctv` merges only clips with `reviewed=true`. Splits are assigned per clip (md5 of the clip name), so frames of one video never cross splits.
 
 ## 5. Function reference
 **scripts/debug_log.py**
@@ -76,6 +82,8 @@ flowchart LR
 - `build_class_map(names, overrides) -> {src_id: 0|1|None}`: maps classes by keyword or override. Garbage keywords include plastic, metal, paper and glass. Raises SystemExit on unknown or ambiguous names.
 - `find_split_dirs(root) -> {split: (images, labels)}`: supports both the Ultralytics and Roboflow layouts, and `valid` as an alias for `val`.
 - `parse_label_file(path) -> (boxes, invalid_count)`: converts polygons to boxes and clips boxes to [0,1]. Invalid rows are dropped.
+- `collect_cctv(root, overrides) -> (records, info)` (added 2026-11-20): returns records for frames whose clip (`<clip>_f######`) has `reviewed=true` in `root/review.json`. Sets `group='cctv:<clip>'` and returns info with the reviewed and not-reviewed clips, frames used and frames skipped. Raises SystemExit if review.json is missing.
+- `main()` (changed 2026-11-20): `--cctv DIR` adds the CCTV records before leakage control. `merge_report.json` → `sources.cctv`.
 - `collect_source(name, root, overrides) -> (records, names)`: builds one record per image with remapped boxes and a Roboflow group key. Raises SystemExit if there is no data.yaml or no images.
 - `fix_group_leakage(records) -> int`: marks copies of one photo that sit outside its highest-priority split (test > val > train) as `drop`.
 - `dhash(path) -> int|None`: 64-bit difference hash. Returns None if the image is unreadable.
@@ -124,6 +132,26 @@ flowchart LR
 - `parse_batch(value, on_gpu, cap_gb, total_gb)`: unchanged.
 - `main()`: now also accepts `--cctv-aug/--patience/--debug` and passes `augmentations=` to `model.train`.
 
+**scripts/clips_to_frames.py** (new, 2026-11-20)
+- `parse_assign(items) -> {clip: split}`: parses `CLIP=train|val|test`. Raises ValueError on bad input.
+- `hamming(a, b) -> int`: number of differing bits between two hashes.
+- `extract_frames(video, fps, tmp_dir) -> [{frame, time_s, path}]`: saves every round(src_fps/fps)-th frame as JPEG. Raises ValueError for fps<=0, SystemExit if the video can't be opened.
+- `dedupe_frames(frames, max_distance) -> (kept, dropped)`: keeps a frame only if its dHash differs from the last kept frame by more than `max_distance` bits. Side effect: deletes dropped duplicate files. Unreadable frames are dropped.
+- `to_yolo_lines(result, cls_out) -> [str]`: Ultralytics boxes to normalised YOLO lines with class `cls_out`.
+- `draft_labels(paths, person_model, garbage_model, person_conf, garbage_conf, imgsz, device) -> {path: [lines]}`: garbage (class 0) lines first, then person (class 1, COCO class 0 only).
+- `write_clip(frames, labels, out, split) -> int`: moves frames to `out/images/<split>/` and writes labels to `out/labels/<split>/`.
+- `update_review(out, clip, entry)`: adds or replaces a clip in `out/review.json`; keeps `reviewed=true` if already set.
+- `main(argv) -> int`: CLI. Writes `data.yaml`; skips clips already in review.json unless `--overwrite`. Raises SystemExit on bad `--assign` or missing videos. `--garbage-backend yolo-world|gdino` chooses the garbage drafter.
+- `gdino_prompt(prompts) -> str`: turns a list of phrases into the Grounding DINO text, lowercase with each phrase ending in '.'.
+- `_Boxes(xywhn)`: a minimal stand-in for Ultralytics `result.boxes` (`.xywhn.tolist()`, `len()`).
+- `filter_garbage_boxes(lines, max_area, nested_frac) -> (lines, {'too_big','nested'})`: drops garbage drafts covering more than `max_area` of the image, and drafts more than `nested_frac` inside a LARGER garbage draft. Person lines are unchanged. 0 disables each rule.
+- `_parse_line(line)`, `_inside_frac(a, b)`: helpers. `_inside_frac` returns the fraction of box a's area that lies inside box b.
+- `auto_split(clip, val_pct, test_pct) -> split`: stable split from the md5 of the clip name. Raises ValueError on bad percentages.
+- `expand_videos(paths) -> [Path]`: keeps files and searches folders recursively for videos.
+- `mark_reviewed(out, clips) -> [str]`: sets `reviewed=true` for the given clips (or `['all']`). Raises SystemExit if review.json is missing or a clip is unknown.
+- `main()` (changed): `--device auto` resolves through `gpu_utils.resolve_device`. Garbage confidence defaults to 0.40 (gdino) or 0.15 (yolo-world). Also adds `--max-frames`, `--val-pct`, `--test-pct`, `--max-garbage-area`, `--nested-frac` and `--mark-reviewed`, and writes `classes.txt`.
+- `GroundingDinoDetector(model_id, prompts, text_threshold, nms_iou, device)`: loads the HF model (network download on first use). `predict(path, conf)` returns `[result]` with normalised boxes. It clips boxes to the image and merges overlaps with class-agnostic NMS. It uses CUDA only when a device other than cpu is given and CUDA is available.
+
 **Unchanged existing modules**
 - `prepare_dataset.py`: `safe_filename`, `read_manifest`, `normalize_box`, `build_records`, `make_session`, `download_one`, `write_labels`, `main`.
 - `audit_dataset.py`: `main`.
@@ -163,9 +191,31 @@ flowchart LR
 | 2026-11-20 | Restore old labels from `data/manifest.jsonl` instead of re-labelling | Manifest had the boxes; the 0-byte files came from a broken copy |
 | 2026-11-20 | Roboflow down-sampling is opt-in flags, default off | Keeps current merges reproducible; user approved approach A |
 | 2026-11-20 | Priority: more CCTV images with person + garbage, accurately labelled | Only 3% of train images have both classes; YouTube test showed garbage misses on CCTV |
+| 2026-11-20 | Part B approach approved: clips → 1 fps → dHash dedupe → draft labels → human review → merge as `cctv`; whole clip per split | Avoids frame leakage between splits; drafts speed up labelling |
+| 2026-11-20 | YOLO-World (`yolov8m-worldv2`) for garbage drafts, not Grounding DINO | CPU-friendly, inside Ultralytics. Smoke test: it misses garbage piles (see pending) |
+| 2026-11-20 | Smoke-test split: MU5JriIfo5k → train, PEyhUwGBrnQ → val | User: test the full flow on 2 clips first |
+| 2026-11-20 | Smoke-test Grounding DINO (tiny, `transformers`) as the garbage drafter; output goes to `datasets_raw/cctv_gdino` | YOLO-World missed piles. A separate folder keeps the YOLO-World output for comparison |
+| 2026-11-20 | Don't pin `clip`/`transformers` in requirements.txt | User decision |
+| 2026-11-20 | Grounding DINO drafts accepted ("most of it is good"). Garbage confidence 0.40; drop garbage boxes > 80% of the image and boxes > 80% nested in a larger one | Smoke test: piles found in 30/30 frames; false positives were scooters, a rickshaw and nested boxes |
+| 2026-11-20 | Workflow: Grounding DINO drafts, then human review in X-AnyLabeling (YOLO import/export with `classes.txt`), then `--mark-reviewed`, then merge | Drafts are not ground truth; the review gate stops unreviewed labels reaching training |
+| 2026-11-20 | Target about 1500 CCTV frames; run on the GPU machine with CUDA (`--device auto`) | CPU here takes about 12 s per Grounding DINO frame (about 5 h for 1500); the GPU is expected to take minutes |
 
 ## 8. Pending items
-- Part B: CCTV frames pipeline (clips → frames → auto-label → review in X-AnyLabeling → merge as source `cctv`): awaiting approval.
+- Part B code is done (2026-11-20). Next, on the GPU machine:
+  1. Collect about 60 CCTV clips.
+  2. `./run.sh cctv-frames <folder>`.
+  3. Review in X-AnyLabeling.
+  4. `--mark-reviewed`.
+  5. Run `restore_old_labels.py`, then `./run.sh merge` and retrain.
+  6. Smoke-test training first (Phase 7).
+- Smoke outputs on this PC: `datasets_raw/cctv_smoke_yoloworld` (YOLO-World, moved from `datasets_raw/cctv`) and `datasets_raw/cctv_gdino` (Grounding DINO at conf 0.30, no filters). Neither is reviewed and neither is in the repo.
+- Earlier Part B notes (historical):
+  - Person drafts (yolo11x) are good.
+  - Garbage drafts (YOLO-World) are poor: they miss piles and box a sign or a board. Tuning prompts and using the `x` model did not help.
+  - Open question: what should produce the garbage drafts? Options: retrain on the restored labels and use our model, Grounding DINO on the GPU machine, or manual boxes.
+  - PEyhUwGBrnQ contains an inserted ad (non-CCTV frames). Clips need trimming or frame review.
+  - Merge integration (`cctv` source in `merge_datasets.py`) is not built yet.
+- `clip` (YOLO-World dependency) is installed in the venv but not pinned in `requirements.txt`.
 - Hailo HEF compile needs the Hailo Dataflow Compiler (x86 Linux, Hailo developer account). It is not on this PC or on the Pi. The Pi demo currently runs on CPU (~1.3 FPS).
 - The training machine's `dataset/` had 0-byte label files, and 2395 images there were unreadable (dropped by the merge, including all old val images). Copy this machine's restored `dataset_merged/labels` or fix the source and re-merge before retraining.
 - 177 images in local `dataset/` have names that don't match the manifest, so their labels are still empty.

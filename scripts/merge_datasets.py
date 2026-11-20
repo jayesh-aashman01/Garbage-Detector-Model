@@ -157,6 +157,36 @@ def collect_source(name: str, root: Path, overrides: dict[str, str]) -> tuple[li
     return records, names
 
 
+# ADDED (2026-11-20): human-reviewed CCTV frames from scripts/clips_to_frames.py
+CCTV_FRAME_RE = re.compile(r"^(?P<clip>.+)_f\d{6}$")
+
+
+def collect_cctv(root: Path, overrides: dict[str, str]) -> tuple[list[dict], dict]:
+    """Records for CCTV frames whose clip has reviewed=true in root/review.json.
+    Each clip is one leakage group ('cctv:<clip>'), so all its frames stay in one split.
+    Returns (records, info). Raises SystemExit if review.json is missing."""
+    dbg("collect_cctv", f"enter root={root}")
+    review_path = root / "review.json"
+    if not review_path.is_file():
+        raise SystemExit(f"cctv: no review.json in {root} (run scripts/clips_to_frames.py first)")
+    review = json.loads(review_path.read_text())
+    reviewed = {c for c, e in review.items() if e.get("reviewed")}
+    records, _ = collect_source("cctv", root, overrides)
+    kept, skipped = [], Counter()
+    for r in records:
+        m = CCTV_FRAME_RE.match(r["image"].stem)
+        clip = m.group("clip") if m else None
+        if clip not in reviewed:
+            skipped["not_reviewed" if clip in review else "unknown_clip"] += 1
+            continue
+        r["group"] = f"cctv:{clip}"
+        kept.append(r)
+    info = {"clips_reviewed": sorted(reviewed), "clips_not_reviewed": sorted(set(review) - reviewed),
+            "frames_used": len(kept), "frames_skipped": dict(skipped)}
+    dbg("collect_cctv", f"exit {info}")
+    return kept, info
+
+
 # --------------------------------------------------------------------------- leakage control
 def fix_group_leakage(records: list[dict]) -> int:
     """Keep each Roboflow augmentation group in a single split (the highest-priority one).
@@ -396,6 +426,8 @@ def main(argv=None):
     ap.add_argument("--backgrounds", type=Path, default=None,
                     help="optional folder of images with NO garbage/people (e.g. empty frames from "
                          "your cameras); added to train with empty labels to cut false alarms")
+    ap.add_argument("--cctv", type=Path, default=None,  # ADDED
+                    help="clips_to_frames.py output; only clips with reviewed=true are merged")
     ap.add_argument("--output", type=Path, default=Path("dataset_merged"))
     ap.add_argument("--class-map", nargs="*", default=[], metavar="NAME=TARGET")
     ap.add_argument("--no-autolabel", action="store_true", help="skip person auto-labelling of the old set")
@@ -431,6 +463,12 @@ def main(argv=None):
         raise SystemExit(f"Roboflow dataset not found at {args.roboflow}. Run scripts/download_roboflow.py first.")
     rf, rf_names = collect_source("rf", args.roboflow, overrides)
     records = old + rf
+    cctv_info = None
+    if args.cctv:  # ADDED: reviewed CCTV frames (person + garbage labels already present)
+        cctv, cctv_info = collect_cctv(args.cctv, overrides)
+        records += cctv
+        print(f"CCTV: {cctv_info['frames_used']} frames from {len(cctv_info['clips_reviewed'])} reviewed clips "
+              f"(skipped {cctv_info['frames_skipped']})")
 
     if args.backgrounds:
         bg = sorted(p for p in args.backgrounds.rglob("*") if p.suffix.lower() in IMG_EXTS)
@@ -464,7 +502,8 @@ def main(argv=None):
 
     report = {
         "sources": {"old": {"path": str(args.old), "names": old_names},
-                    "rf": {"path": str(args.roboflow), "names": rf_names}},
+                    "rf": {"path": str(args.roboflow), "names": rf_names},
+                    "cctv": {"path": str(args.cctv), **cctv_info} if cctv_info else None},  # ADDED
         "target_names": TARGET_NAMES,
         "dropped": dict(Counter(r["drop"] for r in records if r.get("drop"))),
         "augmentation_group_leaks_removed": leak,

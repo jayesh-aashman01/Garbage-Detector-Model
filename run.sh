@@ -18,6 +18,8 @@ BEST_MODEL="${BEST_MODEL:-runs/detect/runs/detect/$RUN_NAME/weights/best.pt}"  #
 CCTV_AUG="${CCTV_AUG:-medium}"                     # ADDED: off|light|medium|heavy
 RF_VERSION="${RF_VERSION:-latest}"                 # ADDED: Roboflow dataset version
 PERSON_MODEL="${PERSON_MODEL:-yolo11x.pt}"         # ADDED: COCO model that auto-labels people
+CCTV_DIR="${CCTV_DIR:-datasets_raw/cctv}"          # ADDED: clips_to_frames.py output (reviewed clips are merged)
+CCTV_MAX_FRAMES="${CCTV_MAX_FRAMES:-1500}"         # ADDED: frame budget for ./run.sh cctv-frames
 DEVICE="${DEVICE:-auto}"  # auto -> CUDA GPU 0 if available, else CPU
 EPOCHS="${EPOCHS:-100}"
 IMGSZ="${IMGSZ:-640}"
@@ -82,8 +84,21 @@ roboflow() {
 merge() {
     log "Merging datasets (auto-labelling people in the old images)"
     [[ -d dataset/images ]] || die "Old dataset not found in ./dataset. Copy it here or run: ./run.sh download"
+    # MODIFIED: add reviewed CCTV frames when present; extra args pass through (e.g. --rf-cap-train 2500)
+    local cctv_args=()
+    [[ -f "$CCTV_DIR/review.json" ]] && cctv_args=(--cctv "$CCTV_DIR")
     "$PYTHON" scripts/merge_datasets.py --old dataset --roboflow datasets_raw/roboflow \
-        --output dataset_merged --person-model "$PERSON_MODEL" --device "$(resolved_device)" --overwrite
+        --output dataset_merged --person-model "$PERSON_MODEL" --device "$(resolved_device)" --overwrite \
+        "${cctv_args[@]}" "$@"
+}
+
+# ADDED: CCTV clips -> 1 fps frames -> Grounding DINO + yolo11x draft labels (review before merging)
+cctv_frames() {
+    log "CCTV frames from: ${*:-<nothing>} (budget $CCTV_MAX_FRAMES frames, device $DEVICE)"
+    [[ $# -gt 0 ]] || die "Usage: ./run.sh cctv-frames <clips_folder|clip.mp4 ...> [extra clips_to_frames.py args]"
+    "$PYTHON" scripts/clips_to_frames.py "$@" --out "$CCTV_DIR" --garbage-backend gdino \
+        --max-frames "$CCTV_MAX_FRAMES" --person-model "$PERSON_MODEL" --device "$DEVICE"
+    "$PYTHON" scripts/preview_dataset.py --data "$CCTV_DIR" --out dataset_preview/cctv
 }
 
 # ADDED: run the trained model on images / videos / folders / rtsp:// streams
@@ -137,6 +152,7 @@ Commands:
   download   Download/prepare the old dataset and audit it
   roboflow   Download the Roboflow human+trash dataset (needs ROBOFLOW_API_KEY in .env)
   merge      Build dataset_merged/ (garbage + person) and audit it
+  cctv-frames  CCTV clips -> draft-labelled frames for review: ./run.sh cctv-frames cctv_clips/
   predict    Run best.pt on images/videos/folders/streams: ./run.sh predict clip.mp4 frames/
   evaluate   Evaluate best.pt on validation split
   train      Train YOLO11m (CCTV augmentation on)
@@ -148,7 +164,7 @@ Environment overrides:
   MAX_VRAM_GB=5.5  (VRAM cap for training; per-epoch usage logged to <run>/vram.csv)
   MANIFEST=data/manifest.jsonl  BEST_MODEL=/path/to/best.pt
   MODEL=yolo11m.pt  RUN_NAME=garbage-person-yolo11m  CCTV_AUG=off|light|medium|heavy
-  RF_VERSION=latest|N  PERSON_MODEL=yolo11x.pt
+  RF_VERSION=latest|N  PERSON_MODEL=yolo11x.pt  CCTV_DIR=datasets_raw/cctv  CCTV_MAX_FRAMES=1500
 
 Examples:
   ./run.sh all
@@ -172,13 +188,19 @@ case "$COMMAND" in
         ;;
     merge)
         activate_venv
-        merge
+        shift
+        merge "$@"
         "$PYTHON" scripts/audit_dataset.py --root dataset_merged
         ;;
     predict)
         activate_venv
         shift
         predict "$@"
+        ;;
+    cctv-frames)
+        activate_venv
+        shift
+        cctv_frames "$@"
         ;;
     evaluate)
         activate_venv
