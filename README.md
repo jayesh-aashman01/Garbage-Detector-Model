@@ -33,6 +33,32 @@ Useful overrides: `EPOCHS=150 CCTV_AUG=heavy BATCH=8 ./run.sh train`, `GD_DEBUG=
 `--window 5` sampled frames (`--sample-fps 2`), which suppresses one-frame false alarms.
 Real-world test clips: `tests/cctv_test_clips.txt`. Tests: `.venv/bin/python -m unittest discover -s tests -t tests -v`.
 
+### Quick path: two copy-paste blocks (GPU machine)
+Labels for the CCTV frames are only correct after **you** review them, so the pipeline has two halves with your review in between.
+Put your clips in `cctv_test/cctv_clips/` first.
+
+**Block A: repair the old labels, draft the CCTV frames, then preview** (run once; re-running skips clips already done)
+```bash
+git pull && ./run.sh deps \
+&& .venv/bin/python scripts/restore_old_labels.py \
+&& ./run.sh cctv-frames cctv_test/cctv_clips/ \
+&& echo "NOW REVIEW: datasets_raw/cctv in X-AnyLabeling (see docs/GPU_RUNBOOK.md step 4); preview: dataset_preview/cctv/"
+```
+
+**Review in X-AnyLabeling** (fix boxes, delete non-CCTV frames, export into `datasets_raw/cctv/labels/<split>`).
+
+**Block B: after review, mark reviewed, back up, merge with Roboflow filtering, then preview**
+```bash
+.venv/bin/python scripts/clips_to_frames.py --out datasets_raw/cctv --mark-reviewed all \
+&& { [ ! -d dataset_merged ] || cp -a dataset_merged "dataset_merged_backup_$(date +%Y%m%d_%H%M)"; } \
+&& ./run.sh merge --rf-drop-closeup 0.5 --rf-drop-portrait 0.4 --rf-cap-train 2500 \
+&& rm -rf dataset_preview/train dataset_preview/val dataset_preview/test \
+&& .venv/bin/python scripts/preview_dataset.py --data dataset_merged --out dataset_preview \
+&& cat dataset_preview/summary.json
+```
+Run Block B **only after reviewing**. `--mark-reviewed all` tells the merge that every draft is correct.
+Check `dataset_preview/` and `dataset_merged/merge_report.json` before training (`docs/GPU_RUNBOOK.md` steps 6–8).
+
 **Full step-by-step for the GPU machine (repair → CCTV drafts → review → merge → pilot → train → evaluate): [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md).**
 
 ### Before merging on the GPU machine: repair the old labels

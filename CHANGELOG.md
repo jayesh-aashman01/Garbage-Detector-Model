@@ -15,6 +15,7 @@ All notable changes to this project. Newest first.
   setup → old-label repair → clip collection → Grounding DINO drafts → X-AnyLabeling review → merge (backup first) →
   yolo11n pilot → full yolo11m run under a new name → evaluate against the baseline.
 - `tests/test_clips_to_frames.py`: `TestDefaultConf` (93 tests total).
+- `README.md`: "Quick path" with two copy-paste blocks. Block A: repair old labels → CCTV drafts → preview. Block B, after human review: mark reviewed → back up → merge with Roboflow filtering → preview.
 
 ### Files touched
 `scripts/clips_to_frames.py`, `requirements.txt`, `README.md`, `docs/GPU_RUNBOOK.md` (new), `tests/test_clips_to_frames.py`,
