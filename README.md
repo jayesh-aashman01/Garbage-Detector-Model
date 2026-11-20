@@ -93,6 +93,7 @@ clips/  ──► ./run.sh cctv-frames clips/      1 fps, dedupe, Grounding DINO
    - **Import:** `Import` → YOLO HBB, choose `datasets_raw/cctv/classes.txt`, then the folder `datasets_raw/cctv/labels/train`.
    - Fix the boxes. Keys: `D` next image, `A` previous, `R` rectangle, `Delete` removes a box.
      - Delete garbage boxes on vehicles, people and signs.
+     - Garbage bins/dumpsters are NOT garbage: box only garbage on the ground, overflowing or being dumped.
      - Use one box per pile, and separate boxes only for separate items.
      - Box every person.
      - Delete frames that are not CCTV (ads, studio shots): remove both the image and its `.txt`.

@@ -2,6 +2,24 @@
 
 All notable changes to this project. Newest first.
 
+## [0.3.3-dev] - 2026-11-20 - Remove near-duplicate CCTV frames
+
+### Added
+- `scripts/dedupe_cctv.py`: finds near-duplicate frames in `datasets_raw/cctv`. A frame counts as a duplicate only if it comes from the same clip as an earlier kept frame, its 256-bit dHash distance is 40 or less, and its boxes match (same count, same class, IoU of at least 0.7).
+  - Boxes are read from the X-AnyLabeling `.json` when one exists (so review edits count), otherwise from the `.txt` draft.
+  - Frames marked "checked" in X-AnyLabeling are never moved.
+  - The default run is a preview only: contact sheets go to `dataset_preview/cctv_duplicates/`.
+  - `--apply` *moves* (never deletes) each duplicate's `.jpg`, `.json` and `.txt` to `datasets_raw/cctv/_duplicates/` and logs it to `moved.jsonl`. It refuses to overwrite anything.
+- `tests/test_dedupe_cctv.py` (9 tests).
+
+### Why
+The existing 1 fps dedupe in `clips_to_frames.py` compares only an 8x8 hash with the last kept frame, so static CCTV scenes left many repeated frames.
+A whole-image hash alone also flags frames where only the person moved (useful variety), which is why the rule requires matching boxes too.
+Preview on the local 1,511 frames: 133 duplicates (train 111 of 1399, val 22 of 112).
+
+### Files touched
+`scripts/dedupe_cctv.py` (new), `tests/test_dedupe_cctv.py` (new), `docs/GPU_RUNBOOK.md`, `CHANGELOG.md`, `PROJECT_STATE.md`.
+
 ## [0.3.2-dev] - 2026-11-20 - Automatic download of CCTV training clips
 
 ### Fixed
@@ -18,6 +36,7 @@ All notable changes to this project. Newest first.
 ### Changed
 - `run.sh cctv-frames`: with no argument it uses `$CCTV_CLIPS`, and gives a clear error when the folder is missing.
 - `README.md` Block A and `docs/GPU_RUNBOOK.md` step 2 now use the download command.
+- Review rules in `README.md` and `docs/GPU_RUNBOOK.md`: garbage bins are not garbage. The runbook also says to add missed people and delete intro, logo and news-studio frames.
 
 ### Files touched
 `run.sh`, `requirements.txt`, `data/cctv_train_clips.txt` (new), `tests/test_cctv_clip_list.py` (new), `README.md`,

@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-20 · Version 0.3.2-dev · Last pushed state: `main` (0.3.2-dev commit, 2026-11-20; see git log)_
+_Last updated: 2026-11-20 · Version 0.3.3-dev · Last pushed state: `main` (0.3.2-dev commit, 2026-11-20; see git log)_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
@@ -32,12 +32,13 @@ _Last updated: 2026-11-20 · Version 0.3.2-dev · Last pushed state: `main` (0.3
 | CCTV frames pipeline from clips (Part B, `clips_to_frames.py`, `./run.sh cctv-frames`) | done: Grounding DINO drafts, CUDA auto, 1500-frame budget, box filters, review gate | 2026-11-20 |
 | Merge reviewed CCTV frames (`merge_datasets.py --cctv`, automatic in `./run.sh merge`) | done (no reviewed clips yet) | 2026-11-20 |
 | Automatic download of CCTV training clips (`./run.sh cctv-download`, `data/cctv_train_clips.txt`, 65 clips) | done (download tested on 2 clips + 1 invalid id) | 2026-11-20 |
+| Near-duplicate CCTV frame removal (`dedupe_cctv.py`, preview then `--apply`, moves to `_duplicates/`) | done (preview run: 133 of 1511) | 2026-11-20 |
 | CCTV data collection, about 1500 frames, plus human review in X-AnyLabeling | planned (user, on GPU machine) | — |
 | Hailo export + Raspberry Pi inference service | planned | — |
 | Per-camera ROI masks, day/night thresholds, dumping-event logic (person + new static garbage) | planned (proposed, not approved) | — |
 
 ## 3. Changelog
-See `CHANGELOG.md`. The latest entry is 0.3.2-dev (2026-11-20): automatic download of CCTV training clips. Before that, 0.3.1-dev (2026-11-20): Grounding DINO confidence 0.30, transformers in requirements, GPU runbook. Before that, 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling, CCTV frame drafting and merge. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
+See `CHANGELOG.md`. The latest entry is 0.3.3-dev (2026-11-20): removal of near-duplicate CCTV frames. Before that, 0.3.2-dev (2026-11-20): automatic download of CCTV training clips. Before that, 0.3.1-dev (2026-11-20): Grounding DINO confidence 0.30, transformers in requirements, GPU runbook. Before that, 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling, CCTV frame drafting and merge. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
 
 ## 4. Architecture
 ```mermaid
@@ -154,6 +155,16 @@ flowchart LR
 - `main()` (changed): `--device auto` resolves through `gpu_utils.resolve_device`. Garbage confidence defaults to 0.40 (gdino) or 0.15 (yolo-world). Also adds `--max-frames`, `--val-pct`, `--test-pct`, `--max-garbage-area`, `--nested-frac` and `--mark-reviewed`, and writes `classes.txt`.
 - `GroundingDinoDetector(model_id, prompts, text_threshold, nms_iou, device)`: loads the HF model (network download on first use). `predict(path, conf)` returns `[result]` with normalised boxes. It clips boxes to the image and merges overlaps with class-agnostic NMS. It uses CUDA only when a device other than cpu is given and CUDA is available.
 
+**`scripts/dedupe_cctv.py`** (new, 0.3.3-dev)
+- `dhash256(path) -> bool[256] | None`: 16x16 difference hash. Returns None for an unreadable image.
+- `read_classes(data) -> [str]`: reads `classes.txt`. Raises SystemExit if it is missing.
+- `load_boxes(img, label_txt, classes) -> (boxes, checked)`: returns normalised corner boxes. It prefers the X-AnyLabeling JSON (pixel rectangles, labels outside `classes` ignored) and falls back to the YOLO txt. `checked` is the X-AnyLabeling checked flag.
+- `iou(a, b)`, `same_boxes(A, B, iou_min) -> bool`: same count, and every box has a same-class partner with IoU at or above `iou_min`.
+- `find_duplicates(data, split, classes, max_distance, iou_min) -> [{kept, dup, distance}]`: compares frames only within their clip, in frame order, against frames already kept. Checked frames are never duplicates. Read-only.
+- `write_preview(pairs, out_dir, split) -> [Path]`: writes contact sheets (KEEP on the left, MOVE on the right, 10 pairs per sheet).
+- `move_duplicates(data, split, pairs) -> int`: moves `.jpg`, `.json` and `.txt` to `<data>/_duplicates/<same relative path>` and appends to `moved.jsonl`. Raises SystemExit rather than overwrite.
+- `main()`: CLI with `--data`, `--splits`, `--max-distance 40`, `--iou 0.7`, `--preview`, `--apply` and `--debug`.
+
 **Unchanged existing modules**
 - `prepare_dataset.py`: `safe_filename`, `read_manifest`, `normalize_box`, `build_records`, `make_session`, `download_one`, `write_labels`, `main`.
 - `audit_dataset.py`: `main`.
@@ -204,10 +215,14 @@ flowchart LR
 | 2026-11-20 | Pin `transformers>=5.23,<6` in requirements.txt (reverses the earlier decision not to pin) | User request; needed on the GPU machine |
 | 2026-11-20 | Training clips come from a committed YouTube id list; downloads are video-only mp4 at 720p or less via yt-dlp (added to requirements) | Block A failed because nothing downloaded clips. Video-only avoids an ffmpeg merge, and audio is not needed |
 | 2026-11-20 | Training clip list must never overlap test/eval clips (enforced by a test) | Keeps the CCTV evaluation honest |
+| 2026-11-20 | Labelling rule: garbage bins/dumpsters are NOT garbage. Box only garbage on the ground, overflowing or being dumped | Otherwise every street bin would trigger an alert. Grounding DINO boxes bins, so they are removed during review |
+| 2026-11-20 | CCTV duplicate rule: same clip AND dHash distance of 40 or less (of 256 bits) AND same boxes (IoU 0.7). Duplicates are moved to `_duplicates/`, never deleted; checked frames are never moved | Preview sheets showed that a hash-only rule removes frames where only the person moved. The user approved building it |
 | 2026-11-20 | Target about 1500 CCTV frames; run on the GPU machine with CUDA (`--device auto`) | CPU here takes about 12 s per Grounding DINO frame (about 5 h for 1500); the GPU is expected to take minutes |
 
 ## 8. Pending items
+- Run `python scripts/dedupe_cctv.py --data datasets_raw/cctv --apply` after the user approves the preview (close X-AnyLabeling first). The same step goes into the GPU runbook before review.
 - GPU machine: follow `docs/GPU_RUNBOOK.md` step by step. Block A originally failed ("no usable videos") because no clips were downloaded; fixed in 0.3.2-dev with `./run.sh cctv-download`.
+- Smoke test of the final settings on 3 new clips (2026-11-20, 41 frames): the drafts need heavy review. Wrong boxes were a logo/title card, a scooter, a gate, shelving and a wheelie bin; a person was missed at night. Estimate 3–4 h to review 1500 frames.
 - Some of the 65 YouTube ids may become unavailable over time. The download only warns about these.
 - Part B code is done (2026-11-20). Next, on the GPU machine:
   1. Collect about 60 CCTV clips.

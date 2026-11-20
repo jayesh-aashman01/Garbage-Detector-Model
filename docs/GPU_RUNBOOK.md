@@ -48,6 +48,9 @@ To force a split: `./run.sh cctv-frames cctv_test/cctv_clips/ --assign CLIPID=te
 
 ## 4. Review every frame in X-AnyLabeling (drafts are NOT ground truth)
 ```bash
+# first remove near-duplicate frames (same clip, same image, same boxes); preview, then apply
+python scripts/dedupe_cctv.py --data datasets_raw/cctv           # sheets in dataset_preview/cctv_duplicates/
+python scripts/dedupe_cctv.py --data datasets_raw/cctv --apply   # moves them to datasets_raw/cctv/_duplicates/ (close X-AnyLabeling first)
 pip install x-anylabeling-cvhub                 # desktop app (PyPI name per the project); see its README for the launch command
 ```
 For each of `train` and `val` (and `test` if used):
@@ -55,6 +58,8 @@ For each of `train` and `val` (and `test` if used):
 2. **Import:** `Import` → YOLO HBB, choose `datasets_raw/cctv/classes.txt` and the folder `datasets_raw/cctv/labels/<split>`.
 3. Fix the boxes. Keys: `D` next image, `A` previous, `R` rectangle, `Delete` removes a box.
    - Delete garbage boxes on vehicles (scooters, rickshaws), people and signs.
+   - Garbage bins/dumpsters are NOT garbage: box only garbage on the ground, overflowing or being dumped.
+   - Add missed people (night frames especially). Delete intro, logo, title-card and news-studio frames.
    - Use one box per pile, and separate boxes only for separate items. Box every person.
    - For ad, studio or non-CCTV frames, delete the image **and** its `.txt`.
 4. **Export:** `Export Annotations` → `Export YOLO Annotations` with the same `classes.txt`. **Set the output to `datasets_raw/cctv/labels/<split>`**, because the default is a folder next to the images.
