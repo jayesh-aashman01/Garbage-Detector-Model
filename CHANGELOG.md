@@ -2,6 +2,24 @@
 
 All notable changes to this project. Newest first.
 
+## [0.3.1-dev] - 2026-11-20 - Grounding DINO confidence 0.30, requirements, GPU runbook
+
+### Changed
+- `scripts/clips_to_frames.py`: the Grounding DINO garbage confidence default goes from 0.40 to **0.30** (user decision). The new function `default_garbage_conf(backend)` holds the defaults.
+  Re-check at 0.40 on PEyhUwGBrnQ: garbage drafts fell from 38 to 1. Real litter scored about 0.34, about the same as false positives on vehicles (0.32–0.35), so vehicles are removed during review instead.
+- `requirements.txt`: added `transformers>=5.23,<6` (Grounding DINO) and a comment that YOLO-World auto-installs CLIP from git.
+- `README.md`: notes confidence 0.30 and links the runbook.
+
+### Added
+- `docs/GPU_RUNBOOK.md`: every command for the GPU machine, each stage with a smoke test first:
+  setup → old-label repair → clip collection → Grounding DINO drafts → X-AnyLabeling review → merge (backup first) →
+  yolo11n pilot → full yolo11m run under a new name → evaluate against the baseline.
+- `tests/test_clips_to_frames.py`: `TestDefaultConf` (93 tests total).
+
+### Files touched
+`scripts/clips_to_frames.py`, `requirements.txt`, `README.md`, `docs/GPU_RUNBOOK.md` (new), `tests/test_clips_to_frames.py`,
+`CHANGELOG.md`, `PROJECT_STATE.md`.
+
 ## [0.3.0-dev] - 2026-11-20 - Dataset repair, preview, opt-in Roboflow down-sampling
 
 ### Added

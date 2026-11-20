@@ -218,6 +218,15 @@ class TestGarbageFilter(unittest.TestCase):
         self.assertEqual(cf.filter_garbage_boxes([], 0.8, 0.8), ([], {"too_big": 0, "nested": 0}))
 
 
+class TestDefaultConf(unittest.TestCase):
+    def test_defaults(self):
+        step("gdino default 0.30, yolo-world 0.15, unknown backend raises")
+        self.assertEqual(cf.default_garbage_conf("gdino"), 0.30)
+        self.assertEqual(cf.default_garbage_conf("yolo-world"), 0.15)
+        with self.assertRaises(ValueError):
+            cf.default_garbage_conf("x")
+
+
 class TestAutoSplitAndBatch(unittest.TestCase):
     def test_stable_and_distribution(self):
         step("same clip always gets same split; ~15% of 400 clips go to val")

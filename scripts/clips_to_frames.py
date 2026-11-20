@@ -241,6 +241,14 @@ def filter_garbage_boxes(lines: list[str], max_area: float, nested_frac: float) 
     return kept + others, stats
 
 
+def default_garbage_conf(backend: str) -> float:
+    """Default garbage draft confidence per backend. gdino 0.30: at 0.40 real litter (~0.34) was lost
+    in the 2026-11-20 smoke test; vehicles score similarly, so they are removed in human review."""
+    if backend not in ("gdino", "yolo-world"):
+        raise ValueError(f"unknown garbage backend {backend!r}")
+    return 0.30 if backend == "gdino" else 0.15
+
+
 def auto_split(clip: str, val_pct: int, test_pct: int) -> str:
     """Stable clip -> split from an md5 of the clip name, so re-runs and new clips never move
     an existing clip to another split. Raises ValueError on bad percentages."""
@@ -334,7 +342,7 @@ def main(argv=None) -> int:
     ap.add_argument("--nms-iou", type=float, default=0.5, help="gdino: merge overlapping garbage boxes")
     ap.add_argument("--person-conf", type=float, default=0.4)
     ap.add_argument("--garbage-conf", type=float, default=None,
-                    help="default: 0.15 (yolo-world) or 0.40 (gdino)")
+                    help="default: 0.15 (yolo-world) or 0.30 (gdino)")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--device", default="auto", help="auto (CUDA if available), cpu, 0, ...")
     ap.add_argument("--overwrite", action="store_true", help="re-process a clip already in review.json")
@@ -360,7 +368,7 @@ def main(argv=None) -> int:
     from gpu_utils import resolve_device
     args.device = resolve_device(args.device)
     if args.garbage_conf is None:
-        args.garbage_conf = 0.40 if args.garbage_backend == "gdino" else 0.15
+        args.garbage_conf = default_garbage_conf(args.garbage_backend)
     print(f"device={args.device} garbage_backend={args.garbage_backend} garbage_conf={args.garbage_conf} "
           f"videos={len(videos)} max_frames={args.max_frames or 'no limit'}")
 

@@ -33,6 +33,8 @@ Useful overrides: `EPOCHS=150 CCTV_AUG=heavy BATCH=8 ./run.sh train`, `GD_DEBUG=
 `--window 5` sampled frames (`--sample-fps 2`), which suppresses one-frame false alarms.
 Real-world test clips: `tests/cctv_test_clips.txt`. Tests: `.venv/bin/python -m unittest discover -s tests -t tests -v`.
 
+**Full step-by-step for the GPU machine (repair → CCTV drafts → review → merge → pilot → train → evaluate): [`docs/GPU_RUNBOOK.md`](docs/GPU_RUNBOOK.md).**
+
 ### Before merging on the GPU machine: repair the old labels
 The training machine's `dataset/` had 0-byte label files, so every `old_*` image lost its garbage boxes.
 Rebuild them from the manifest. The script backs up the labels folder first:
@@ -56,7 +58,7 @@ clips/  ──► ./run.sh cctv-frames clips/      1 fps, dedupe, Grounding DINO
    ```
    This writes `datasets_raw/cctv/{images,labels}/{train,val}/`, `classes.txt`, `review.json` and the preview `dataset_preview/cctv/`.
    About 15% of clips go to val automatically (stable per clip name). Use `--assign CLIP=test` to override.
-   Garbage drafts use confidence 0.40. A box covering more than 80% of the image is dropped, and so is a box more than 80% inside a larger garbage box (one box per pile).
+   Garbage drafts use confidence 0.30 (0.40 lost real litter in testing; delete vehicle boxes during review). A box covering more than 80% of the image is dropped, and so is a box more than 80% inside a larger garbage box (one box per pile).
    Re-running skips clips that are already done. Add more clips and run again.
 2. **Review (any machine, X-AnyLabeling desktop app).** For each split folder:
    - Open the folder `datasets_raw/cctv/images/train`.

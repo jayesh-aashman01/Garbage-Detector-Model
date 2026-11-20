@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-20 · Version 0.3.0-dev · Last pushed state: `main` at fa2ce34 (Part A), plus the Part B commit pushed 2026-11-20 (see git log)_
+_Last updated: 2026-11-20 · Version 0.3.1-dev · Last pushed state: `main` (0.3.1-dev commit, 2026-11-20; see git log)_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
@@ -36,7 +36,7 @@ _Last updated: 2026-11-20 · Version 0.3.0-dev · Last pushed state: `main` at f
 | Per-camera ROI masks, day/night thresholds, dumping-event logic (person + new static garbage) | planned (proposed, not approved) | — |
 
 ## 3. Changelog
-See `CHANGELOG.md`. The latest entry is 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
+See `CHANGELOG.md`. The latest entry is 0.3.1-dev (2026-11-20): Grounding DINO confidence 0.30, transformers in requirements, GPU runbook. Before that, 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling, CCTV frame drafting and merge. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
 
 ## 4. Architecture
 ```mermaid
@@ -146,6 +146,7 @@ flowchart LR
 - `_Boxes(xywhn)`: a minimal stand-in for Ultralytics `result.boxes` (`.xywhn.tolist()`, `len()`).
 - `filter_garbage_boxes(lines, max_area, nested_frac) -> (lines, {'too_big','nested'})`: drops garbage drafts covering more than `max_area` of the image, and drafts more than `nested_frac` inside a LARGER garbage draft. Person lines are unchanged. 0 disables each rule.
 - `_parse_line(line)`, `_inside_frac(a, b)`: helpers. `_inside_frac` returns the fraction of box a's area that lies inside box b.
+- `default_garbage_conf(backend) -> float`: returns 0.30 for gdino and 0.15 for yolo-world. Raises ValueError for an unknown backend.
 - `auto_split(clip, val_pct, test_pct) -> split`: stable split from the md5 of the clip name. Raises ValueError on bad percentages.
 - `expand_videos(paths) -> [Path]`: keeps files and searches folders recursively for videos.
 - `mark_reviewed(out, clips) -> [str]`: sets `reviewed=true` for the given clips (or `['all']`). Raises SystemExit if review.json is missing or a clip is unknown.
@@ -198,9 +199,12 @@ flowchart LR
 | 2026-11-20 | Don't pin `clip`/`transformers` in requirements.txt | User decision |
 | 2026-11-20 | Grounding DINO drafts accepted ("most of it is good"). Garbage confidence 0.40; drop garbage boxes > 80% of the image and boxes > 80% nested in a larger one | Smoke test: piles found in 30/30 frames; false positives were scooters, a rickshaw and nested boxes |
 | 2026-11-20 | Workflow: Grounding DINO drafts, then human review in X-AnyLabeling (YOLO import/export with `classes.txt`), then `--mark-reviewed`, then merge | Drafts are not ground truth; the review gate stops unreviewed labels reaching training |
+| 2026-11-20 | Grounding DINO garbage confidence 0.30 (not 0.40) | Re-check: 0.40 cut PEyh drafts from 38 to 1. Real litter scored ~0.34, the same as vehicle false positives, so vehicles are removed during review |
+| 2026-11-20 | Pin `transformers>=5.23,<6` in requirements.txt (reverses the earlier decision not to pin) | User request; needed on the GPU machine |
 | 2026-11-20 | Target about 1500 CCTV frames; run on the GPU machine with CUDA (`--device auto`) | CPU here takes about 12 s per Grounding DINO frame (about 5 h for 1500); the GPU is expected to take minutes |
 
 ## 8. Pending items
+- GPU machine: follow `docs/GPU_RUNBOOK.md` step by step.
 - Part B code is done (2026-11-20). Next, on the GPU machine:
   1. Collect about 60 CCTV clips.
   2. `./run.sh cctv-frames <folder>`.
