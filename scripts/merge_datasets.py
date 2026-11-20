@@ -247,6 +247,48 @@ def fix_near_duplicates(records: list[dict], max_distance: int, workers: int) ->
 
 
 # --------------------------------------------------------------------------- person auto-label
+# ADDED: opt-in Roboflow down-sampling (close-ups, portraits, train cap). All off by default.
+def filter_roboflow(records: list[dict], closeup: float | None = None, portrait: float | None = None,
+                    cap_train: int | None = None, seed: int = 0, source: str = "rf") -> Counter:
+    """Mark Roboflow records least like CCTV as dropped. Only live records of `source` are touched.
+
+      * closeup  : exactly one box and its normalised area w*h > closeup      -> drop "rf_closeup"
+      * portrait : no garbage box, exactly one person box with area > portrait -> drop "rf_portrait"
+      * cap_train: keep at most cap_train live train records (seeded shuffle)  -> drop "rf_cap"
+    Area equal to the threshold is kept (strictly greater drops). val/test are never capped.
+    Returns a Counter of drop reasons. Raises ValueError on invalid thresholds.
+    """
+    import random
+    for name, frac in (("closeup", closeup), ("portrait", portrait)):
+        if frac is not None and not 0 < frac <= 1:
+            raise ValueError(f"--rf-drop-{name} must be in (0, 1], got {frac}")
+    if cap_train is not None and cap_train < 0:
+        raise ValueError(f"--rf-cap-train must be >= 0, got {cap_train}")
+    dbg("filter_roboflow", f"enter records={len(records)} closeup={closeup} portrait={portrait} "
+                           f"cap_train={cap_train} seed={seed}")
+    reasons: Counter = Counter()
+    live = [r for r in records if r["source"] == source and not r.get("drop")]
+    for r in live:
+        boxes = r["boxes"]
+        if closeup is not None and len(boxes) == 1 and boxes[0][3] * boxes[0][4] > closeup:
+            r["drop"] = "rf_closeup"
+        elif portrait is not None:
+            people = [b for b in boxes if b[0] == 1]
+            if not any(b[0] == 0 for b in boxes) and len(people) == 1 and people[0][3] * people[0][4] > portrait:
+                r["drop"] = "rf_portrait"
+        if r.get("drop"):
+            reasons[r["drop"]] += 1
+    if cap_train is not None:
+        train = sorted((r for r in live if r["split"] == "train" and not r.get("drop")), key=lambda r: str(r["image"]))
+        random.Random(seed).shuffle(train)
+        for r in train[cap_train:]:
+            r["drop"] = "rf_cap"
+            reasons["rf_cap"] += 1
+        dbg("filter_roboflow", f"cap: train_live={len(train)} kept={min(len(train), cap_train)}")
+    dbg("filter_roboflow", f"exit dropped={dict(reasons)} (records only marked, nothing deleted)")
+    return reasons
+
+
 def autolabel_people(records, model_name, conf, imgsz, device, batch, cache_path: Path) -> int:
     """Add person boxes (target id 1) predicted by a COCO model to the given records.
 
@@ -367,6 +409,14 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true", help="delete --output first if it exists")
     ap.add_argument("--debug", action="store_true")
+    # ADDED: opt-in Roboflow down-sampling (default off = old behaviour)
+    ap.add_argument("--rf-drop-closeup", type=float, default=None, metavar="FRAC",
+                    help="drop Roboflow images with one box whose area fraction > FRAC (e.g. 0.5)")
+    ap.add_argument("--rf-drop-portrait", type=float, default=None, metavar="FRAC",
+                    help="drop Roboflow images with no garbage and one person box with area > FRAC (e.g. 0.4)")
+    ap.add_argument("--rf-cap-train", type=int, default=None, metavar="N",
+                    help="keep at most N Roboflow train images after the filters (val/test untouched)")
+    ap.add_argument("--seed", type=int, default=0, help="seed for --rf-cap-train sampling")
     args = ap.parse_args(argv)
     enable(args.debug)
 
@@ -389,6 +439,14 @@ def main(argv=None):
 
     leak = fix_group_leakage(records)
     dups = fix_near_duplicates(records, args.dup_distance, args.workers)
+    # ADDED: Roboflow down-sampling; raises ValueError on bad thresholds -> clean CLI error
+    try:
+        rf_dropped = filter_roboflow(records, args.rf_drop_closeup, args.rf_drop_portrait,
+                                     args.rf_cap_train, args.seed)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    if rf_dropped:
+        print(f"Roboflow down-sampling dropped: {dict(rf_dropped)}")
 
     # Auto-label people only for sources whose original classes contain no person class.
     added = 0
@@ -411,6 +469,8 @@ def main(argv=None):
         "dropped": dict(Counter(r["drop"] for r in records if r.get("drop"))),
         "augmentation_group_leaks_removed": leak,
         "near_duplicates_removed": dict(dups),
+        "rf_downsampling": {"closeup": args.rf_drop_closeup, "portrait": args.rf_drop_portrait,  # ADDED
+                            "cap_train": args.rf_cap_train, "seed": args.seed, "dropped": dict(rf_dropped)},
         "person_boxes_autolabeled": added,
         "person_model": None if args.no_autolabel else args.person_model,
         "person_conf": args.person_conf,

@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-19 · Version 0.2.1 · Last pushed state: `main`, v0.2.1 pushed 2026-11-19 (see git log)_
+_Last updated: 2026-11-20 · Version 0.3.0-dev (unpushed) · Previously: Last pushed state: `main`, v0.2.1 pushed 2026-11-19 (see git log)_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
@@ -25,11 +25,16 @@ _Last updated: 2026-11-19 · Version 0.2.1 · Last pushed state: `main`, v0.2.1 
 | YOLO11m default model | done | 2026-11-19 |
 | Image/video/stream prediction + persistence alerts + image-level accuracy | done | 2026-11-19 |
 | Train v2 model on GPU machine | planned (user) | — |
+| Dataset preview with ground-truth boxes (`preview_dataset.py`) | done | 2026-11-20 |
+| Restore old garbage labels from manifest (`restore_old_labels.py`) | done (run on local copy) | 2026-11-20 |
+| Opt-in Roboflow down-sampling in merge (close-up / portrait / train cap) | done (not yet used in a merge) | 2026-11-20 |
+| Live Pi camera demo on CPU (NCNN, `~/garbage_live/live.py` on the Pi, not in repo) | done (test only) | 2026-11-20 |
+| CCTV frames pipeline from clips (Part B) | planned (awaiting approval) | — |
 | Hailo export + Raspberry Pi inference service | planned | — |
 | Per-camera ROI masks, day/night thresholds, dumping-event logic (person + new static garbage) | planned (proposed, not approved) | — |
 
 ## 3. Changelog
-See `CHANGELOG.md`. The latest entry is 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
+See `CHANGELOG.md`. The latest entry is 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
 
 ## 4. Architecture
 ```mermaid
@@ -77,6 +82,10 @@ flowchart LR
 - `fix_near_duplicates(records, max_distance, workers) -> Counter`: uses LSH banding. Drops cross-split duplicates (lower-priority split) and cross-source duplicates in the same split, and marks unreadable images.
 - `autolabel_people(records, model, conf, imgsz, device, batch, cache_path) -> int`: appends class-1 boxes. Side effects: downloads the model and reads/writes the cache JSON. The cache is reset if the model, conf or imgsz change.
 - `safe_name(text) -> str`: makes a filename safe.
+- `filter_roboflow(records, closeup=None, portrait=None, cap_train=None, seed=0, source="rf") -> Counter`: marks live rf records as dropped.
+  `closeup`: exactly one box with area w*h > closeup → `rf_closeup`. `portrait`: no garbage and exactly one person box with area > portrait → `rf_portrait`.
+  `cap_train`: seeded shuffle of live rf train records, keeps the first N → `rf_cap` (val/test never capped). Equal-to-threshold is kept.
+  Side effect: sets `drop` on records (nothing deleted). Returns drop counts. Raises ValueError if a fraction is not in (0, 1] or cap < 0 (main turns it into SystemExit).
 - `write_dataset(records, out, workers) -> dict`: copies images, writes labels and returns per-split statistics.
 - `parse_overrides(items) -> dict`: parses `name=garbage|person|drop`. Raises SystemExit on bad input.
 - `main(argv) -> int`: CLI. Writes `data.yaml` and `merge_report.json`. Raises SystemExit if the output exists without `--overwrite`.
@@ -96,6 +105,20 @@ flowchart LR
 - `run_video(...) -> dict`: samples frames at `--sample-fps`, applies the persistence alert, writes `<stem>_pred.mp4`, and returns alert events in seconds.
 - `image_accuracy(per_source, labels_dir) -> dict`: counts TP/FP/FN/TN for "garbage present" and returns precision, recall, F1 and accuracy.
 - `main(argv) -> int`: CLI. Writes `detections.jsonl` and `summary.json`. Raises SystemExit if the model is missing.
+
+**scripts/preview_dataset.py** (new 2026-11-20)
+- `load_names(root) -> list`: class names from data.yaml (list or dict).
+- `read_boxes(label_path) -> [(cls, cx, cy, w, h)]`: reads YOLO lines; polygons become boxes; missing file → [].
+- `draw_one(job) -> (kind, counts)`: draws boxes on one image and saves it to `<out>/<split>/` or `<out>/<split>/empty_labels/`. kind is boxed, empty or unreadable.
+- `main()`: CLI `--data --out --splits --workers`. Writes `summary.json`. Runs in a process pool on CPU.
+
+**scripts/restore_old_labels.py** (new 2026-11-20)
+- `safe_name(text)`: same rule as merge_datasets.safe_name, used to rebuild merged file names.
+- `load_manifest(path) -> {stem: [lines]}`: YOLO lines per manifest image (boxes with w or h <= 0 skipped).
+- `backup(labels_dir) -> Path`: copies the folder to `labels_backup_<timestamp>/`.
+- `restore_merged(root, manifest) -> stats`: rewrites `old_*.txt` = manifest garbage boxes + existing non-class-0 lines.
+- `restore_old_dataset(root, manifest) -> stats`: rewrites `dataset/labels/<split>` for images present and writes `data.yaml`.
+- `main()`: CLI `--manifest --merged --old --skip-old`.
 
 **scripts/train.py**
 - `parse_batch(value, on_gpu, cap_gb, total_gb)`: unchanged.
@@ -137,8 +160,17 @@ flowchart LR
 | 2026-11-19 | Tests with stdlib `unittest` | No new test dependency |
 | 2026-11-19 | Map Plastic/Metal/Paper/Glass → garbage by keyword | Goal is "garbage present?"; avoids manual --class-map |
 | 2026-11-19 | 401 errors show Roboflow reason + key source + last 3 chars | Faster diagnosis. The key stays masked; 3 characters are enough to tell keys apart |
+| 2026-11-20 | Restore old labels from `data/manifest.jsonl` instead of re-labelling | Manifest had the boxes; the 0-byte files came from a broken copy |
+| 2026-11-20 | Roboflow down-sampling is opt-in flags, default off | Keeps current merges reproducible; user approved approach A |
+| 2026-11-20 | Priority: more CCTV images with person + garbage, accurately labelled | Only 3% of train images have both classes; YouTube test showed garbage misses on CCTV |
 
 ## 8. Pending items
+- Part B: CCTV frames pipeline (clips → frames → auto-label → review in X-AnyLabeling → merge as source `cctv`): awaiting approval.
+- Hailo HEF compile needs the Hailo Dataflow Compiler (x86 Linux, Hailo developer account). It is not on this PC or on the Pi. The Pi demo currently runs on CPU (~1.3 FPS).
+- The training machine's `dataset/` had 0-byte label files, and 2395 images there were unreadable (dropped by the merge, including all old val images). Copy this machine's restored `dataset_merged/labels` or fix the source and re-merge before retraining.
+- 177 images in local `dataset/` have names that don't match the manifest, so their labels are still empty.
+- Label quality: some old labels are wrong (e.g. a full frame of autumn leaves labelled garbage) and box style is mixed (whole pile vs per item).
+- Dry run of Roboflow down-sampling on current train (6206 rf images): close-up>0.5 drops 937, portrait>0.4 drops 366, both drop 1066 (5140 remain). Not applied yet.
 - On the GPU machine, `./run.sh roboflow` returned 401 even though the key is valid. The likely cause is an exported shell variable overriding `.env`, or a `.env` formatting problem; the new error message will show which. The key was pasted into chat, so **regenerate it** after downloading.
 - Roboflow dataset facts: 9,928 images, CC BY 4.0, version 2. Classes: People 8,010, Plastic 5,672, Waste 3,280, Metal 1,543, Paper 1,190, Glass 805 (boxes are per item, while the old dataset boxes piles).
 - Copy `dataset/` to the training machine. The download links expire on 2026-11-20 08:00 UTC, so back the folder up.

@@ -2,6 +2,30 @@
 
 All notable changes to this project. Newest first.
 
+## [0.3.0-dev] - 2026-11-20 - Dataset repair, preview, opt-in Roboflow down-sampling
+
+### Added
+- `scripts/preview_dataset.py`: draws ground-truth YOLO boxes on every image of a dataset (CPU only, no model).
+  Writes `dataset_preview/<split>/` and `dataset_preview/<split>/empty_labels/`, plus `summary.json`.
+- `scripts/restore_old_labels.py`: restores the old dataset's garbage boxes from `data/manifest.jsonl` into
+  `dataset_merged/labels/*/old_*.txt` (keeps auto-labelled person lines) and rebuilds `dataset/labels` + `dataset/data.yaml`.
+  Backs up each labels folder first (`labels_backup_<timestamp>/`).
+- `scripts/merge_datasets.py`: opt-in Roboflow down-sampling, all off by default:
+  `--rf-drop-closeup FRAC`, `--rf-drop-portrait FRAC`, `--rf-cap-train N`, `--seed N`.
+  New function `filter_roboflow`; drop reasons `rf_closeup`, `rf_portrait`, `rf_cap` appear in `merge_report.json`
+  under `dropped`, and the settings under `rf_downsampling`.
+- `tests/test_rf_filter.py`: 9 tests (defaults, close-up, boundary, portrait, seeded cap, cap > count, no rf records,
+  invalid values, CLI exit).
+- `.gitignore`: `dataset_preview/`.
+
+### Fixed
+- Data (not code): the training machine's `dataset/` had 0-byte label files, so all 1744 `old_*` images in
+  `dataset_merged` had no garbage boxes. Restored with `scripts/restore_old_labels.py` (train +4489, test +569 garbage boxes).
+
+### Files touched
+`scripts/merge_datasets.py`, `scripts/preview_dataset.py` (new), `scripts/restore_old_labels.py` (new),
+`tests/test_rf_filter.py` (new), `.gitignore`, `CHANGELOG.md`, `PROJECT_STATE.md`.
+
 ## [0.2.1] - 2026-11-19 - Roboflow class names + clearer auth errors
 
 ### Changed
