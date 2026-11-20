@@ -35,13 +35,15 @@ Real-world test clips: `tests/cctv_test_clips.txt`. Tests: `.venv/bin/python -m 
 
 ### Quick path: two copy-paste blocks (GPU machine)
 Labels for the CCTV frames are only correct after **you** review them, so the pipeline has two halves with your review in between.
-Put your clips in `cctv_test/cctv_clips/` first.
+Block A downloads the 65 training clips listed in `data/cctv_train_clips.txt` into `cctv_test/cctv_clips/` (git-ignored, about 80 min of video, a few hundred MB).
+You can add your own camera clips to that folder too.
 
-**Block A: repair the old labels, draft the CCTV frames, then preview** (run once; re-running skips clips already done)
+**Block A: repair the old labels, download the clips, draft the CCTV frames, then preview** (run once; re-running skips clips already done)
 ```bash
 git pull && ./run.sh deps \
 && .venv/bin/python scripts/restore_old_labels.py \
-&& ./run.sh cctv-frames cctv_test/cctv_clips/ \
+&& ./run.sh cctv-download \
+&& ./run.sh cctv-frames \
 && echo "NOW REVIEW: datasets_raw/cctv in X-AnyLabeling (see docs/GPU_RUNBOOK.md step 4); preview: dataset_preview/cctv/"
 ```
 

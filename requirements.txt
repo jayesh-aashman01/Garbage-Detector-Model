@@ -4,5 +4,6 @@ Pillow>=10.0.0
 tqdm>=4.66.0
 PyYAML>=6.0.1
 albumentations>=2.0.8,<2.1
+yt-dlp>=2025.1.1          # downloads training clips (./run.sh cctv-download)
 transformers>=5.23,<6     # Grounding DINO draft labels (scripts/clips_to_frames.py --garbage-backend gdino)
 # YOLO-World (--garbage-backend yolo-world) auto-installs CLIP from git+https://github.com/ultralytics/CLIP.git on first use

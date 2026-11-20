@@ -1,6 +1,6 @@
 # PROJECT_STATE — Garbage Detection (garbage + person, CCTV)
 
-_Last updated: 2026-11-20 · Version 0.3.1-dev · Last pushed state: `main` (0.3.1-dev commit, 2026-11-20; see git log)_
+_Last updated: 2026-11-20 · Version 0.3.2-dev · Last pushed state: `main` (0.3.2-dev commit, 2026-11-20; see git log)_
 
 ## 1. Project overview
 - **Purpose:** detect garbage (and people) in CCTV frames, so we know whether garbage is present at a location and can later detect dumping events. The planned deployment is a Raspberry Pi 5 with an AI HAT (Hailo) and a camera.
@@ -31,12 +31,13 @@ _Last updated: 2026-11-20 · Version 0.3.1-dev · Last pushed state: `main` (0.3
 | Live Pi camera demo on CPU (NCNN, `~/garbage_live/live.py` on the Pi, not in repo) | done (test only) | 2026-11-20 |
 | CCTV frames pipeline from clips (Part B, `clips_to_frames.py`, `./run.sh cctv-frames`) | done: Grounding DINO drafts, CUDA auto, 1500-frame budget, box filters, review gate | 2026-11-20 |
 | Merge reviewed CCTV frames (`merge_datasets.py --cctv`, automatic in `./run.sh merge`) | done (no reviewed clips yet) | 2026-11-20 |
+| Automatic download of CCTV training clips (`./run.sh cctv-download`, `data/cctv_train_clips.txt`, 65 clips) | done (download tested on 2 clips + 1 invalid id) | 2026-11-20 |
 | CCTV data collection, about 1500 frames, plus human review in X-AnyLabeling | planned (user, on GPU machine) | — |
 | Hailo export + Raspberry Pi inference service | planned | — |
 | Per-camera ROI masks, day/night thresholds, dumping-event logic (person + new static garbage) | planned (proposed, not approved) | — |
 
 ## 3. Changelog
-See `CHANGELOG.md`. The latest entry is 0.3.1-dev (2026-11-20): Grounding DINO confidence 0.30, transformers in requirements, GPU runbook. Before that, 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling, CCTV frame drafting and merge. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
+See `CHANGELOG.md`. The latest entry is 0.3.2-dev (2026-11-20): automatic download of CCTV training clips. Before that, 0.3.1-dev (2026-11-20): Grounding DINO confidence 0.30, transformers in requirements, GPU runbook. Before that, 0.3.0-dev (2026-11-20): dataset preview, old-label restore, opt-in Roboflow down-sampling, CCTV frame drafting and merge. Before that, 0.2.1 (2026-11-19): Roboflow material class names map to garbage, and clearer 401 errors. Before that, 0.2.0 added the full v2 pipeline.
 
 ## 4. Architecture
 ```mermaid
@@ -201,10 +202,13 @@ flowchart LR
 | 2026-11-20 | Workflow: Grounding DINO drafts, then human review in X-AnyLabeling (YOLO import/export with `classes.txt`), then `--mark-reviewed`, then merge | Drafts are not ground truth; the review gate stops unreviewed labels reaching training |
 | 2026-11-20 | Grounding DINO garbage confidence 0.30 (not 0.40) | Re-check: 0.40 cut PEyh drafts from 38 to 1. Real litter scored ~0.34, the same as vehicle false positives, so vehicles are removed during review |
 | 2026-11-20 | Pin `transformers>=5.23,<6` in requirements.txt (reverses the earlier decision not to pin) | User request; needed on the GPU machine |
+| 2026-11-20 | Training clips come from a committed YouTube id list; downloads are video-only mp4 at 720p or less via yt-dlp (added to requirements) | Block A failed because nothing downloaded clips. Video-only avoids an ffmpeg merge, and audio is not needed |
+| 2026-11-20 | Training clip list must never overlap test/eval clips (enforced by a test) | Keeps the CCTV evaluation honest |
 | 2026-11-20 | Target about 1500 CCTV frames; run on the GPU machine with CUDA (`--device auto`) | CPU here takes about 12 s per Grounding DINO frame (about 5 h for 1500); the GPU is expected to take minutes |
 
 ## 8. Pending items
-- GPU machine: follow `docs/GPU_RUNBOOK.md` step by step.
+- GPU machine: follow `docs/GPU_RUNBOOK.md` step by step. Block A originally failed ("no usable videos") because no clips were downloaded; fixed in 0.3.2-dev with `./run.sh cctv-download`.
+- Some of the 65 YouTube ids may become unavailable over time. The download only warns about these.
 - Part B code is done (2026-11-20). Next, on the GPU machine:
   1. Collect about 60 CCTV clips.
   2. `./run.sh cctv-frames <folder>`.

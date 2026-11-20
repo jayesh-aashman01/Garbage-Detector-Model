@@ -1,0 +1,71 @@
+# CCTV / surveillance clips of dumping and littering used as TRAINING data (frames, then draft labels, then human review).
+# Format: <youtube_id>  # duration_s | title
+# Downloaded by: ./run.sh cctv-download  (yt-dlp, mp4 at 720p or less, into cctv_test/cctv_clips/, git-ignored)
+# Third-party footage: internal research use only. Do not commit or redistribute the videos.
+# Must NOT overlap tests/cctv_test_clips.txt or the 2026-11-20 evaluation clips (checked by tests/test_cctv_clip_list.py).
+# Picked 2026-11-20 from YouTube search results by title. Some are news packages with presenters or ads: delete those frames during review.
+0hFg0kfNMYw   # 15s | Dilu Technologies | High Rise Littering Demo
+r47n35_sPYY   # 16s | Caught on Camera: Illegal Concrete Dumping at Construction Site
+TK_PdDoAokQ   # 16s | Caught on cctv
+VNSAoGwDWos   # 16s | Dahua DH-IPC-HFW7842H-Z littering detection IP camera
+fSVdI-ig7SQ   # 18s | Public littering caught on camera
+tr7audYTnEI   # 18s | alongside neighbor throwing rubbish our house's here & there anytime..
+wClTIsWXX4M   # 20s | Flytippers caught on camera
+-BBgYkNltcE   # 21s | illegal dumping caught on camera
+H-9laNh3Lmg   # 21s | Stupid Neighbor !! Caught in the Act!
+rl6BsQyyldI   # 22s | Dumping Trash in Alley Caught on Surveillance Cameras 2
+kYm0PdWSNss   # 24s | Illegal Dumping Caught On Camera, Police Intervene
+9dZ-8OQxhcE   # 25s | Hikvision High-Rise Littering Detection IP Camera
+HFlXUOi0TMI   # 25s | Caught littering!
+zHlPqiSQPis   # 27s | ILLEGAL GARBAGE DUMPING PREVENTED
+sb9xAGkmyC0   # 28s | #cctv #swachhbharat #footage #garbage #littering garbage When will people change? woman
+bFa3ewydQ7g   # 29s | Illegal Dumping Documentation  |  Washing Machine Dump & Run  01.30.2025
+BMiP2jEg4Bs   # 29s | Fly Tipping Caught Red Handed - Great Lever, Bolton
+5MUR5Way2BY   # 31s | 🚨 Illegal Dumping Caught on Camera | Remote Guard Response
+gIrG9DPqQfw   # 32s | newsense, throwing garbage infront of others house
+KS1zm1kOus8   # 33s | Disgraceful! Builders dump a mountain of waste onto a children's playing field
+ZreqsUIKUPA   # 36s | High Rise Littering Detection By Daxun Digital 5MP High-Rise Littering Detection IR Bullet
+qWgSIAmAjz0   # 45s | Litter Buggers Caught!
+R4IISiMD244   # 45s | People Behaving Badly - Bald Guy Litter Bag of Trash on Street
+yVgerqSOeKM   # 45s | CCC Illegal Dumping Documentation 11.2024
+Bya1TGaEBhw   # 47s | CCC Illegal Dumping 02.05.2025
+qq-cQnRdTjA   # 47s | Stop Illegal Dumping with Live Remote Guarding
+KhjA6S0u-hw   # 51s | Walsall fly-tippers caught red handed on SECRET CCTV! - Daily Mail
+DZgrpYXIZkE   # 55s | Illegal Dumping Investigation
+jngm9n_c3yc   # 55s | Real-time detection of illegal dumping | Council | iOmniscient
+oWsjyRCz0L8   # 56s | Some littering footages
+aWaackNN6DM   # 57s | Man throwing waste caught on CCTV Camera | Manorama News
+J-5SP6EVVbw   # 57s | Man wanted after 75 tonnes of illegal waste dumped in Nelson
+odBZ2YOLVmQ   # 59s | Low life’s dumping sofa. caught on security camera. #cctv #securitycamera #caughtoncamera
+VHZfQLAxDiY   # 60s | Slaughter house waste dumped on national highway
+YxD1xZmZBrw   # 60s | Neighbor Dumping in our Trash Can 4-2-17
+A7_RhwPexVc   # 61s | Garbage throwing at Thiruvananthapuram
+HI2LMn-02cQ   # 44s | More Garbage throwing at Thiruvananthapuram.avi
+W8oSwJndX0E   # 69s | Caught Red Van Handed Fly Tipping in Ealing
+VYuFZdGC5DI   # 69s | "Think Green Skip" Company Fly-Tipping in day light in Stoke
+lCi0hw1LQUA   # 74s | CCTV  Bin men OVERFILL bin so THEY don't have to empty it
+AnRcUjMazlU   # 76s | Guy caught illegally dumping trash gets instant karma
+bNc_21vNUdM   # 81s | How Neighbor Thrown Garbage in Front Of Our Door / CCTV Camera Caught Neighborhood wars
+3Mn-ZLkSF2E   # 82s | Fly-tippers caught in the act dumping rubbish outside warehouse
+UmMdM6PpGu8   # 82s | Man caught on camera dumping trash in Vermilion River
+J0sbF2EdLIY   # 85s | Oldham Council bin man throws rubbish out of dustbin
+DvsOLyzjbQE   # 95s | Wirral fly-tipper caught red handed and prosecuted
+t9wn_9V_UF8   # 98s | Illegal Dumpers Caught on Camera
+igHuJWBjuos   # 99s | neighbour throwing garbage and littering behind power boxes
+9oFOWt813jA   # 103s | People illegally dumping trash in Central Park neighborhood
+CDnxc9EeSWI   # 105s | Caught on camera illegal dumping
+P-ARu77EkQQ   # 118s | Garbage throwing on road side
+dMc9gZfFP6U   # 127s | Levenshulme Woman Fly Tipper Caught  Red Handed 30-3-2017
+N12gOJXH0iw   # 135s | 03/09/2023. garbage throwing on cctv Chirayilpadam, Kottayam
+Ybn2aMk-BIQ   # 141s | Garbage thrown infront of someone's house | A Moral Video
+2Q0mn6TNQck   # 142s | Britain’s most brazen fly tippers filmed blocking road junction by dumping bags of in broa
+HVB6BLGxE-Y   # 142s | Surveillance video captures illegal brush dumping on San Benito church property
+YpaEM7z9KxY   # 151s | CCTV footage of fly tip in Hackney
+Ve8kmNyVxDA   # 153s | Junk dumped at LAGRACE - CCTV Footage 26 04 2021_A
+TqxXrE7ZS_M   # 171s | Heap of Garbage thrown on main road, Borda; caught on CCTV. WATCH!
+-iM3K9tMtoE   # 187s | CCTV person caught illegal dumping mattress box spring
+qV1E9LYByDs   # 238s | Illegal Dumping Caught on Camera
+sJ-nyWmA9Z8   # 284s | "Litter mongers caught LIVE – CCTV footage goes viral!"
+03j2cu2i61g   # 212s | Secretly Dumping Rubbish In Neighbours Dust Bin
+pgNT8jof7V8   # 49s | When you catch a fly tipper an police pull up at same time BONUS
+nUCUq6eehSs   # 37s | Fly-tipper Chased And Blocked In By Kent Farmers

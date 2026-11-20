@@ -2,6 +2,27 @@
 
 All notable changes to this project. Newest first.
 
+## [0.3.2-dev] - 2026-11-20 - Automatic download of CCTV training clips
+
+### Fixed
+- Block A of the README quick path failed with "no usable videos": nothing downloaded the clips. It now runs `./run.sh cctv-download` first.
+
+### Added
+- `data/cctv_train_clips.txt`: 65 YouTube CCTV/surveillance dumping and littering clips (about 79 min), picked by title.
+  It excludes every clip in `tests/cctv_test_clips.txt` and the 2026-11-20 evaluation clips; 6 overlapping picks were removed.
+- `run.sh cctv-download` (`cctv_download`): yt-dlp, video-only mp4 at 720p or less (no ffmpeg merge). Skips clips already present, warns on failed ids and continues, and stops with an error only if no clips exist afterwards.
+  Variables: `CCTV_CLIP_LIST`, `CCTV_CLIPS`.
+- `tests/test_cctv_clip_list.py` (3 tests): valid and unique ids, at least 50 clips, no overlap with test/eval clips.
+- `requirements.txt`: `yt-dlp>=2025.1.1`.
+
+### Changed
+- `run.sh cctv-frames`: with no argument it uses `$CCTV_CLIPS`, and gives a clear error when the folder is missing.
+- `README.md` Block A and `docs/GPU_RUNBOOK.md` step 2 now use the download command.
+
+### Files touched
+`run.sh`, `requirements.txt`, `data/cctv_train_clips.txt` (new), `tests/test_cctv_clip_list.py` (new), `README.md`,
+`docs/GPU_RUNBOOK.md`, `CHANGELOG.md`, `PROJECT_STATE.md`.
+
 ## [0.3.1-dev] - 2026-11-20 - Grounding DINO confidence 0.30, requirements, GPU runbook
 
 ### Changed

@@ -23,22 +23,20 @@ ls datasets_raw/roboflow/data.yaml || ./run.sh roboflow   # Roboflow raw data ne
 `restore_old_labels.py` reads `data/manifest.jsonl` and needs no download.
 The 2395 "unreadable" old images in the last merge mean some files under `dataset/images` are broken on this machine. If the next merge still reports `unreadable_image`, copy `dataset/images` from a machine where they open.
 
-## 2. Collect CCTV clips (target: about 1500 frames, roughly 60 one-minute clips from 20+ different cameras or scenes)
-Put every clip in one folder, e.g. `cctv_clips/`. It is git-ignored if you place it under `cctv_test/`, otherwise add it to `.gitignore`.
-Best: your own camera at the real site (staged dumping, day and night). YouTube clips are for internal use only.
+## 2. Download CCTV clips (target: about 1500 frames)
 ```bash
-pipx install yt-dlp                             # separate tool, not a project dependency
-mkdir -p cctv_test/cctv_clips && cd cctv_test/cctv_clips
-yt-dlp -f "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b" --merge-output-format mp4 \
-       -o "%(id)s.%(ext)s" -- VIDEO_ID_1 VIDEO_ID_2 ...
-cd ../..
+./run.sh cctv-download        # 65 clips from data/cctv_train_clips.txt into cctv_test/cctv_clips/; re-run safe; failed ids only warn
+ls cctv_test/cctv_clips | wc -l
 ```
-Trim news intros and ads where you can. Otherwise delete those frames during review.
+- The list excludes every test/evaluation clip, and `tests/test_cctv_clip_list.py` checks that.
+- Add your own camera clips (the best data: the real site, day and night) to `cctv_test/cctv_clips/`. They are processed the same way.
+- To use another list: `CCTV_CLIP_LIST=my_list.txt CCTV_CLIPS=other_folder ./run.sh cctv-download`.
+- YouTube clips are third-party footage, for internal use only.
 
 ## 3. Draft labels with Grounding DINO + yolo11x (CUDA)
 ```bash
 # smoke test: about 100 frames, then look at the preview
-CCTV_MAX_FRAMES=100 ./run.sh cctv-frames cctv_test/cctv_clips/
+CCTV_MAX_FRAMES=100 ./run.sh cctv-frames
 xdg-open dataset_preview/cctv/train             # garbage = red, person = orange. Are the drafts sensible?
 
 # full run: resumes and skips clips already done; stops starting new clips at 1500 frames
